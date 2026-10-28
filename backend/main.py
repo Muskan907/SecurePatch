@@ -1551,6 +1551,10 @@ def generate_patch(request: PatchRequest):
             llm_result.text,
             function["name"],
         )
+        validate_patch_guardrails(
+            repaired_function,
+            function["name"],
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=502,
@@ -1767,6 +1771,74 @@ def get_rag(repo: Path) -> RepositoryRAG:
     # filtered by repository path so imported repositories do not mix.
     return RepositoryRAG(RAG_ROOT)
 
+
+def validate_patch_guardrails(patch: str, expected_function: str) -> None:
+    """Reject malformed or obviously unsafe AI-generated patches."""
+
+    if not patch or not patch.strip():
+        raise ValueError("Guardrail blocked: empty patch.")
+
+    try:
+        tree = ast.parse(patch)
+    except SyntaxError as exc:
+        raise ValueError(
+            f"Guardrail blocked: invalid Python syntax: {exc}"
+        ) from exc
+
+    # Only one function is permitted in the generated patch.
+    if len(tree.body) != 1 or not isinstance(
+        tree.body[0], (ast.FunctionDef, ast.AsyncFunctionDef)
+    ):
+        raise ValueError(
+            "Guardrail blocked: output must contain exactly one function."
+        )
+
+    function = tree.body[0]
+
+    if function.name != expected_function:
+        raise ValueError(
+            "Guardrail blocked: generated function name does not match "
+            "the expected function."
+        )
+
+    # Inspect Python syntax rather than relying on text matching.
+    for node in ast.walk(function):
+        if not isinstance(node, ast.Call):
+            continue
+
+        func = node.func
+        call_name = (
+            func.id if isinstance(func, ast.Name)
+            else f"{func.value.id}.{func.attr}"
+            if isinstance(func, ast.Attribute)
+            and isinstance(func.value, ast.Name)
+            else None
+        )
+
+        if call_name in {"eval", "exec"}:
+            raise ValueError(
+                f"Guardrail blocked: unsafe call to {call_name}()."
+            )
+
+        if call_name in {
+            "os.system",
+            "pickle.loads",
+            "marshal.loads",
+        }:
+            raise ValueError(
+                f"Guardrail blocked: unsafe call to {call_name}()."
+            )
+
+        if call_name and call_name.startswith("subprocess."):
+            for keyword in node.keywords:
+                if (
+                    keyword.arg == "shell"
+                    and isinstance(keyword.value, ast.Constant)
+                    and keyword.value.value is True
+                ):
+                    raise ValueError(
+                        "Guardrail blocked: subprocess shell=True."
+                    )
 
 def normalize_function_output(text: str, function_name: str) -> str:
     """
