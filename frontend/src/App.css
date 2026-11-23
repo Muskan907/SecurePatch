@@ -306,3 +306,34 @@ button { cursor: pointer; }
   width: 100%;
   margin-top: 12px;
 }
+/* ===== Publish to GitHub / GitLab ===== */
+.publish-panel { margin-top: 18px; border-color: #28583e; }
+.publish-source { font-size: 11px; color: #82958a; margin: -4px 0 14px; }
+.publish-source a, .publish-hint a { color: #7fe8a9; }
+.publish-row { display: grid; gap: 7px; margin-bottom: 14px; }
+.publish-row .repo-input { min-height: 38px; }
+.publish-label { font: 9px "DM Mono", monospace; letter-spacing: .08em; text-transform: uppercase; color: #6e8277; }
+.publish-hint { font-size: 10px; color: #6e8277; line-height: 1.6; }
+.publish-seg { display: inline-flex; border: 1px solid #26382f; border-radius: 9px; overflow: hidden; width: fit-content; }
+.publish-seg button { background: #080e0b; color: #9cc8ad; border: 0; padding: 8px 16px; font-size: 10px; font-weight: 800; letter-spacing: .05em; }
+.publish-seg button.active { background: #7fe8a9; color: #06100a; }
+.publish-modes { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.publish-modes button { text-align: left; display: grid; gap: 4px; padding: 10px 11px; border-radius: 9px; border: 1px solid #1a2821; background: #0b120f; color: #c8d5ce; }
+.publish-modes button b { font-size: 11px; }
+.publish-modes button span { font-size: 10px; color: #6e8277; line-height: 1.5; }
+.publish-modes button.active { border-color: #4fb37a; background: #0e1d15; }
+.publish-modes button:disabled { opacity: .4; cursor: not-allowed; }
+.publish-check { display: flex; gap: 8px; align-items: flex-start; font-size: 11px; color: #9cb3a6; margin: 4px 0 10px; line-height: 1.5; }
+.publish-check.warn { color: #e4b46b; }
+.publish-plan { display: flex; gap: 10px; align-items: flex-start; margin-top: 6px; padding: 11px 12px; border: 1px solid #244e35; border-radius: 9px; background: #0b1610; color: #83e3a7; font-size: 11px; }
+.publish-plan p { margin: 4px 0 0; color: #9cb3a6; line-height: 1.6; }
+.publish-actions { display: flex; gap: 9px; margin-top: 14px; flex-wrap: wrap; }
+.publish-actions .primary-btn { flex: 1; }
+.publish-result { margin-top: 14px; padding: 13px; border: 1px solid #28583e; border-radius: 9px; background: #09140e; }
+.publish-result-head { display: flex; gap: 8px; align-items: center; color: #79e5a0; font-size: 12px; font-weight: 700; }
+.publish-links { display: flex; flex-wrap: wrap; gap: 8px; margin: 11px 0; }
+.publish-links a { display: inline-flex; gap: 6px; align-items: center; color: #9cc8ad; border: 1px solid #274333; border-radius: 999px; padding: 6px 10px; font-size: 10px; text-decoration: none; word-break: break-all; }
+.publish-links a:hover { border-color: #4fb37a; }
+.publish-clone { display: flex; gap: 8px; align-items: center; border: 1px solid #1a2821; border-radius: 9px; background: #050a07; padding: 8px 10px; }
+.publish-clone code { flex: 1; font: 10px "DM Mono", monospace; color: #c9d9d0; overflow-x: auto; white-space: nowrap; }
+.publish-clone button { background: transparent; border: 0; color: #7fe8a9; }

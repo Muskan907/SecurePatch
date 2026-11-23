@@ -35,6 +35,7 @@ MODEL_OPTIONS = {
         "top_p": 0.9,
         "repeat_penalty": 1.15,
         "repeat_last_n": 256,
+        "num_ctx": 8192,
     },
     "llama3.1": {
         "temperature": 0.0,
@@ -42,6 +43,7 @@ MODEL_OPTIONS = {
         "top_p": 0.9,
         "repeat_penalty": 1.10,
         "repeat_last_n": 256,
+        "num_ctx": 8192,
     },
     "codestral": {
         "temperature": 0.0,
@@ -49,6 +51,7 @@ MODEL_OPTIONS = {
         "top_p": 0.9,
         "repeat_penalty": 1.15,
         "repeat_last_n": 256,
+        "num_ctx": 8192,
     },
 }
 
@@ -127,6 +130,7 @@ def _model_options(model_key: str) -> dict:
             "top_p": 0.9,
             "repeat_penalty": 1.15,
             "repeat_last_n": 256,
+        "num_ctx": 8192,
         },
     ).copy()
 

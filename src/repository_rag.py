@@ -394,24 +394,40 @@ class RepositoryRAG:
         return retrieved
 
 
+# Local models run with a small context window (Ollama default 4096
+# tokens). If the prompt is longer, Ollama silently drops its BEGINNING,
+# so retrieved context must stay within a fixed character budget.
+MAX_CONTEXT_CHARS = 6000
+MAX_EVIDENCE_CHARS = 2000
+
+
 def format_context(
     retrieved: list[dict[str, Any]],
+    max_chars: int = MAX_CONTEXT_CHARS,
+    max_item_chars: int = MAX_EVIDENCE_CHARS,
 ) -> str:
 
     parts = []
+    used = 0
 
     for index, item in enumerate(
         retrieved,
         start=1,
     ):
+        text = item.get("text", "") or ""
+        if len(text) > max_item_chars:
+            text = text[:max_item_chars].rstrip() + "\n# ... (truncated)"
 
-        parts.append(
-            f"""[REPOSITORY EVIDENCE {index}]
+        part = f"""[REPOSITORY EVIDENCE {index}]
 File: {item.get("file", "")}
 Lines: {item.get("start_line", "")}-{item.get("end_line", "")}
 Similarity: {item.get("score", 0)}
 
-{item.get("text", "")}""".strip()
-        )
+{text}""".strip()
+
+        if parts and used + len(part) > max_chars:
+            break
+        parts.append(part)
+        used += len(part)
 
     return "\n\n".join(parts)
