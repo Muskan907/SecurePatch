@@ -1,0 +1,42 @@
+# Production stack using the images published by the CD workflow.
+#
+#   IMAGE_OWNER=<github-user-lowercase> IMAGE_TAG=latest \
+#     docker compose -f docker-compose.prod.yml up -d
+name: securepatch
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.17
+    volumes:
+      - ollama-models:/root/.ollama
+    restart: unless-stopped
+
+  backend:
+    image: ghcr.io/${IMAGE_OWNER:-muskan907}/securepatch-backend:${IMAGE_TAG:-latest}
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      ALLOWED_ORIGINS: ${PUBLIC_FRONTEND_URL:-http://localhost:8080}
+      SANDBOX_MODE: local
+    volumes:
+      - workspace:/app/workspace
+      - hf-cache:/home/app/.cache/huggingface
+    ports:
+      - "8000:8000"
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  frontend:
+    # Built with VITE_API_URL=http://localhost:8000. For a public server,
+    # rebuild the frontend image with that server's backend URL.
+    image: ghcr.io/${IMAGE_OWNER:-muskan907}/securepatch-frontend:${IMAGE_TAG:-latest}
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  ollama-models:
+  workspace:
+  hf-cache:

@@ -74,8 +74,6 @@ def analyze_impact(
         {}
     ).items():
 
-        test_file = test_info.get("file", "")
-
         # Look for edges if available
         for edge in graph.get("edges", []):
 

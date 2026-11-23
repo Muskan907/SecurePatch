@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------
+  # Lint + unit/integration tests with coverage
+  # -------------------------------------------------------
+  backend:
+    name: Backend · lint & tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install --index-url https://download.pytorch.org/whl/cpu torch
+          pip install -r requirements.txt
+          pip install ruff pytest-cov
+
+      - name: Ruff (lint)
+        run: ruff check backend src tests --output-format github
+
+      - name: Pytest with coverage
+        run: |
+          pytest -q tests \
+            --cov=src --cov=backend \
+            --cov-report=xml --cov-report=term \
+            --cov-fail-under=30 \
+            --junitxml=pytest-results.xml
+
+      - name: Upload test & coverage reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-test-reports
+          path: |
+            coverage.xml
+            pytest-results.xml
+
+  # -------------------------------------------------------
+  # Security: SAST on our own code + dependency audit
+  # -------------------------------------------------------
+  security:
+    name: Security · Bandit & dependencies
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write   # upload SARIF to GitHub code scanning
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install scanners
+        run: pip install "bandit[sarif]==1.9.4" pip-audit
+
+      - name: Bandit SARIF report (all severities)
+        run: bandit -r backend src -f sarif -o bandit.sarif --exit-zero
+
+      - name: Upload SARIF to code scanning
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true   # needs code scanning enabled on the repo
+        with:
+          sarif_file: bandit.sarif
+          category: bandit
+
+      - name: Security gate - fail on HIGH severity findings
+        run: bandit -r backend src -lll
+
+      - name: Dependency vulnerability audit
+        continue-on-error: true   # report only; pinned deps are bumped by Dependabot
+        run: pip-audit -r requirements.txt --format markdown --output pip-audit.md --progress-spinner off
+
+      - name: Demo - scan the intentionally vulnerable sample repo
+        run: bandit -r sample_repo -f json -o sample-repo-bandit.json --exit-zero
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            bandit.sarif
+            pip-audit.md
+            sample-repo-bandit.json
+
+  # -------------------------------------------------------
+  # Frontend: lint + production build
+  # -------------------------------------------------------
+  frontend:
+    name: Frontend · lint & build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+  # -------------------------------------------------------
+  # Container configuration sanity check
+  # -------------------------------------------------------
+  compose:
+    name: Docker Compose · validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker compose -f docker-compose.prod.yml config --quiet

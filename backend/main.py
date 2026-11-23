@@ -2,13 +2,11 @@ from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
-from urllib.parse import urlparse
 import ast
 import json
 import os
 from pathlib import Path
 import re
-import shlex
 import shutil
 import subprocess
 import sys
@@ -34,6 +32,7 @@ from src.llm_adapter import (
 from src.repository_rag import RepositoryRAG, format_context
 from src.repo_importer import ImportFailed, import_remote
 from src.bandit_stream import bandit_command, iter_scan, sse
+from src.sandbox_runner import describe as sandbox_describe, pytest_command
 from src.bandit_catalog import catalog as bandit_catalog, compare_findings, explain
 from src.git_publisher import (
     PublishError,
@@ -56,6 +55,7 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
+    # Extra origins (e.g. the Docker frontend) via ALLOWED_ORIGINS=a,b
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:5174",
@@ -63,6 +63,11 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://127.0.0.1:5174",
         "http://127.0.0.1:5175",
+        *[
+            origin.strip()
+            for origin in os.getenv("ALLOWED_ORIGINS", "").split(",")
+            if origin.strip()
+        ],
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -505,10 +510,6 @@ def build_graph(repo_path: Path):
                 )
     # Add explicit TESTS relationships when a test function
     # references a repository function or its source file.
-    function_by_id = {
-        item["id"]: item
-        for item in functions
-    }
     for file_path in python_files:
         if (
             "__pycache__" in file_path.parts
@@ -924,7 +925,16 @@ def apply_function_patch(
 
 
 def run_pytest(sandbox: Path):
-    """Run repository tests in an isolated Windows subprocess."""
+    """Run the sandbox's tests in Docker (preferred) or a local subprocess."""
+    command, isolation = pytest_command(sandbox)
+    result = _run_pytest(sandbox, command)
+    result["isolation"] = isolation
+    if isolation == "docker":
+        result["sandbox_limits"] = sandbox_describe()["limits"]
+    return result
+
+
+def _run_pytest(sandbox: Path, command: list[str]):
     env = os.environ.copy()
     env.pop("PYTHONPATH", None)
 
@@ -937,7 +947,7 @@ def run_pytest(sandbox: Path):
 
     try:
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", "tests", "-q"],
+            command,
             cwd=str(sandbox),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
@@ -947,7 +957,7 @@ def run_pytest(sandbox: Path):
             errors="replace",
             env=env,
             creationflags=creationflags,
-            timeout=120,
+            timeout=180,
         )
 
         output = (result.stdout + "\n" + result.stderr).strip()
@@ -1025,7 +1035,7 @@ def run_pytest(sandbox: Path):
             "expected_failures": [],
             "unexpected_failures": [],
             "output": (
-                "Pytest timed out after 120 seconds.\n"
+                "Pytest timed out after 180 seconds.\n"
                 + stdout
                 + "\n"
                 + stderr
@@ -1461,10 +1471,6 @@ def analyze(request: AnalyzeRequest):
         # Recover line number.
         try:
             test_path = repo / test_file
-            test_code = test_path.read_text(
-                encoding="utf-8",
-                errors="replace",
-            )
             test_analysis = analyze_python_file(
                 test_path,
                 1,
@@ -1581,12 +1587,6 @@ def generate_patch(request: PatchRequest):
     analysis["related_tests"] = impact.get(
         "related_tests",
         [],
-    )
-    prompt = build_patch_prompt(
-        finding,
-        analysis,
-        graph,
-        impact,
     )
     try:
         rag = get_rag(repo)
@@ -1953,6 +1953,9 @@ def health():
     return {
         "status": "healthy",
         "service": "SecurePatch Backend",
+        "version": app.version,
+        "sandbox": sandbox_describe(),
+        "ollama": ollama_is_available(),
     }
 
 # =========================================================

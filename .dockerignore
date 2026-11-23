@@ -1,0 +1,22 @@
+# Keep build contexts small and free of local state / secrets.
+.git
+.github
+.env
+.env.*
+venv
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.ruff_cache
+.coverage
+coverage.xml
+htmlcov
+reports
+workspace
+frontend
+**/node_modules
+*.zip
+*.backup
+bandit-report.json
+benchmark_bandit.json

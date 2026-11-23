@@ -222,10 +222,12 @@ class RepositoryRAG:
 
                 content = chunk["text"]
 
+                # Not a security use: SHA1 only builds a stable chunk ID.
                 chunk_id = hashlib.sha1(
                     f"{repo_id}:{relative}:{chunk_index}".encode(
                         "utf-8"
-                    )
+                    ),
+                    usedforsecurity=False,
                 ).hexdigest()
 
                 ids.append(chunk_id)

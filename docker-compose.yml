@@ -1,0 +1,76 @@
+# SecurePatch full stack: frontend + backend + local LLM (Ollama).
+#
+#   docker compose up -d --build        # start everything
+#   docker compose --profile setup run --rm model-pull   # download the LLM once
+#
+# Frontend: http://localhost:8080    Backend: http://localhost:8000/docs
+name: securepatch
+
+services:
+  ollama:
+    image: ollama/ollama:0.40.17
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      - "11434:11434"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    image: securepatch-backend:local
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+      # The backend container is the isolation boundary for test runs.
+      SANDBOX_MODE: local
+    volumes:
+      - workspace:/app/workspace
+      - hf-cache:/home/app/.cache/huggingface
+    ports:
+      - "8000:8000"
+    depends_on:
+      ollama:
+        condition: service_started
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: frontend
+      args:
+        VITE_API_URL: http://localhost:8000
+    image: securepatch-frontend:local
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # One-off: download the default model into the ollama volume.
+  model-pull:
+    image: ollama/ollama:0.40.17
+    profiles: ["setup"]
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "qwen2.5-coder:7b"]
+    depends_on:
+      - ollama
+
+  # Build-only: the locked-down test sandbox image used when the backend
+  # runs on the host with SANDBOX_MODE=auto|docker.
+  sandbox-image:
+    build:
+      context: sandbox
+    image: securepatch-sandbox:latest
+    profiles: ["setup"]
+
+volumes:
+  ollama-models:
+  workspace:
+  hf-cache:
