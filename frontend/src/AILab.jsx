@@ -1,7 +1,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-const API = "http://127.0.0.1:8000";
+import { API } from "./api";
 
 const AI_LAB_STORAGE_KEY = "securepatch_ai_lab_state";
 
@@ -329,6 +329,7 @@ export default function AILab({
    * =========================================================
    */
 
+  // eslint-disable-next-line no-unused-vars -- kept for the compare tab
   async function compareModels() {
     if (!repoPath) {
       setError("Import a repository first.");
@@ -370,7 +371,7 @@ export default function AILab({
       if (Array.isArray(data.results)) {
         setComparisonResults(data.results);
       }
-    } catch (e) {
+    } catch {
       /*
        * Compatibility with backend versions
        * expecting "providers".

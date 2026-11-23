@@ -15,8 +15,7 @@ import {
   XCircle,
 } from "lucide-react";
 
-const API =
-  import.meta.env.VITE_API_URL || "http://127.0.0.1:8000";
+import { API } from "./api";
 
 const PROVIDERS = {
   github: {
@@ -319,12 +318,16 @@ export default function PublishPanel({ repoPath }) {
         </label>
       )}
 
+      {(plan || result)?.profile && (
+        <ProfileCard profile={(plan || result).profile} provider={info.label} />
+      )}
+
       {plan && (
         <div className="publish-plan">
           <ShieldCheck size={16} />
           <div>
             <b>
-              Signed in as @{plan.user}: will publish as{" "}
+              Will publish as{" "}
               {MODES.find((m) => m.id === plan.mode)?.label}
             </b>
             <p>{plan.reason}</p>
@@ -406,5 +409,32 @@ export default function PublishPanel({ repoPath }) {
         </div>
       )}
     </div>
+  );
+}
+
+function ProfileCard({ profile, provider }) {
+  return (
+    <a
+      className="publish-profile"
+      href={profile.profile_url}
+      target="_blank"
+      rel="noreferrer"
+      title={`Open ${provider} profile`}
+    >
+      {profile.avatar_url ? (
+        <img src={profile.avatar_url} alt="" />
+      ) : (
+        <span className="publish-avatar">
+          {profile.username?.[0]?.toUpperCase()}
+        </span>
+      )}
+      <span>
+        <b>{profile.name || profile.username}</b>
+        <em>
+          @{profile.username} · signed in to {provider}
+        </em>
+      </span>
+      <ExternalLink size={13} />
+    </a>
   );
 }

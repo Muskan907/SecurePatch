@@ -25,6 +25,30 @@ MODEL_REGISTRY = {
     "codestral": "codestral:22b-v0.1-q3_K_S",
 }
 
+# Lightweight models used only as automatic fallbacks when the main model
+# fails (e.g. Ollama returns 500 under memory pressure). They are kept out
+# of MODEL_REGISTRY so benchmark/compare runs are unchanged.
+LIGHTWEIGHT_MODELS = {
+    "qwen2.5-1.5b": "qwen2.5:1.5b",
+    "phi3-mini": "phi3:mini",
+}
+
+ALL_MODELS = {**MODEL_REGISTRY, **LIGHTWEIGHT_MODELS}
+
+# Order in which models are tried after the requested one fails.
+FALLBACK_ORDER = ["qwen2.5-coder", "llama3.1", "qwen2.5-1.5b", "phi3-mini"]
+
+
+def fallback_chain(primary: str, available: Optional[list[str]] = None) -> list[str]:
+    """Requested model first, then installed fallbacks (no duplicates)."""
+    chain = [primary] + [m for m in FALLBACK_ORDER if m != primary]
+    if available is None:
+        return chain
+    installed = set(available)
+    return [primary] + [
+        m for m in chain[1:] if ALL_MODELS.get(m) in installed
+    ]
+
 # ============================================================================
 # MODEL-SPECIFIC GENERATION SETTINGS
 # ============================================================================
@@ -247,14 +271,14 @@ def generate(
 ) -> LLMResult:
     if not prompt or not prompt.strip():
         raise ValueError("Prompt cannot be empty.")
-    if model not in MODEL_REGISTRY:
-        available = ", ".join(MODEL_REGISTRY.keys())
+    if model not in ALL_MODELS:
+        available = ", ".join(ALL_MODELS.keys())
         raise ValueError(
             f"Unsupported model '{model}'. "
             f"Available models: {available}"
         )
 
-    ollama_model = MODEL_REGISTRY[model]
+    ollama_model = ALL_MODELS[model]
     options = _model_options(model)
     if temperature is not None:
         options["temperature"] = temperature
