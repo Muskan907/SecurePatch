@@ -12,7 +12,7 @@ import {
   Download,
   FileCode2,
   GitBranch,
-  
+  BookOpen,
   Layers3,
   Link2,
   LockKeyhole,
@@ -36,8 +36,14 @@ import "./App.css";
 import AILab from "./AILab";
 import Evaluation from "./Evaluation";
 import PublishPanel from "./PublishPanel";
-
-const API = "http://127.0.0.1:8000";
+import {
+  BanditComparison,
+  BanditGuide,
+  RuleExplainer,
+  ScanTerminal,
+} from "./BanditGuide";
+import { RepoPresets } from "./RepoFinder";
+import { API } from "./api";
 
 const stages = [
   {
@@ -135,6 +141,9 @@ function App() {
   const [downloading, setDownloading] = useState(false);
   const [stage, setStage] = useState("scan");
   const [error, setError] = useState("");
+  const [scanLog, setScanLog] = useState([]);
+  const [scanMeta, setScanMeta] = useState(null);
+  const [importNote, setImportNote] = useState("");
 
   const selectedFinding = useMemo(() => {
     return (
@@ -246,14 +255,36 @@ function App() {
    * =========================================================
    */
 
-  async function importGitHubRepository() {
-    if (!githubUrl.trim()) {
+  function resetAnalysis() {
+    setFindings([]);
+    setSummary({
+      total: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+    });
+    setSelected(null);
+    setAnalysis(null);
+    setPatchData(null);
+    setValidation(null);
+    setScanLog([]);
+    setScanMeta(null);
+    setStage("scan");
+    setActiveNav("Overview");
+  }
+
+  async function importGitHubRepository(urlOverride) {
+    const url = (
+      typeof urlOverride === "string" ? urlOverride : githubUrl
+    ).trim();
+
+    if (!url) {
       setError("Enter a GitHub or GitLab repository URL.");
       return;
     }
 
     if (
-      !/(github|gitlab)\.com[/:]/.test(githubUrl)
+      !/(github|gitlab)\.com[/:]/.test(url)
     ) {
       setError(
         "Please enter a valid GitHub or GitLab repository URL."
@@ -261,17 +292,17 @@ function App() {
       return;
     }
 
+    setGithubUrl(url);
     setImporting(true);
     setError("");
+    setImportNote("");
 
     try {
       const data = await apiRequest(
-        "/api/repositories/github",
+        "/api/repositories/git",
         {
           method: "POST",
-          body: JSON.stringify({
-            url: githubUrl.trim(),
-          }),
+          body: JSON.stringify({ url }),
         }
       );
 
@@ -280,21 +311,12 @@ function App() {
       setRepositorySource(
         data.source === "gitlab" ? "GitLab" : "GitHub"
       );
-
-      // Reset previous analysis
-      setFindings([]);
-      setSummary({
-        total: 0,
-        high: 0,
-        medium: 0,
-        low: 0,
-      });
-      setSelected(null);
-      setAnalysis(null);
-      setPatchData(null);
-      setValidation(null);
-      setStage("scan");
-      setActiveNav("Overview");
+      setImportNote(
+        data.import_method === "zip"
+          ? "git clone failed, so the repository was downloaded as a ZIP snapshot instead."
+          : ""
+      );
+      resetAnalysis();
 
     } catch (error) {
       setError(
@@ -358,27 +380,52 @@ function App() {
         data.name || repoFile.name
       );
       setRepositorySource("ZIP Upload");
-
-      // Reset previous analysis
-      setFindings([]);
-      setSummary({
-        total: 0,
-        high: 0,
-        medium: 0,
-        low: 0,
-      });
-      setSelected(null);
-      setAnalysis(null);
-      setPatchData(null);
-      setValidation(null);
-      setStage("scan");
-      setActiveNav("Overview");
+      setImportNote("");
+      resetAnalysis();
 
     } catch (error) {
       setError(
         error.message ||
           "Repository upload failed."
       );
+    } finally {
+      setImporting(false);
+    }
+  }
+
+  /*
+   * =========================================================
+   * LOCAL FOLDER IMPORT (no zipping needed)
+   * =========================================================
+   */
+
+  async function importFolder(files) {
+    setImporting(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      files.forEach((file) => {
+        formData.append("files", file);
+        formData.append(
+          "paths",
+          file.webkitRelativePath || file.name
+        );
+      });
+      const response = await fetch(
+        `${API}/api/repositories/upload-folder`,
+        { method: "POST", body: formData }
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data.detail || "Folder upload failed.");
+      }
+      setRepoPath(data.repo_path || "");
+      setRepositoryName(data.name || "Local folder");
+      setRepositorySource("Local Folder");
+      setImportNote(data.message || "");
+      resetAnalysis();
+    } catch (error) {
+      setError(error.message || "Folder upload failed.");
     } finally {
       setImporting(false);
     }
@@ -408,39 +455,16 @@ function App() {
 
     setStage("scan");
     setActiveNav("Overview");
+    setScanLog([{ text: "Connecting to Bandit SAST engine...", tone: "dim" }]);
+    setScanMeta(null);
 
     try {
-      const data = await apiRequest(
-        "/api/scan",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            repo_path: repoPath,
-          }),
-        }
-      );
-
+      const data = await streamScan();
       setFindings(data.findings || []);
-
       setSummary(
-        data.summary || {
-          total: 0,
-          high: 0,
-          medium: 0,
-          low: 0,
-        }
+        data.summary || { total: 0, high: 0, medium: 0, low: 0 }
       );
-
-      /*
-       * Scan completed.
-       * Move workflow to Code Analysis.
-       */
-      if (data.findings?.length) {
-        setStage("understand");
-      } else {
-        setStage("scan");
-      }
-
+      setStage(data.findings?.length ? "understand" : "scan");
     } catch (error) {
       setError(
         error.message ||
@@ -449,6 +473,82 @@ function App() {
     } finally {
       setScanning(false);
     }
+  }
+
+  /*
+   * Live scan over Server-Sent Events: one event per scanned file.
+   * Falls back to the plain /api/scan endpoint if streaming fails.
+   */
+  function streamScan() {
+    const log = (text, tone) =>
+      setScanLog((lines) => [...lines, { text, tone }].slice(-400));
+
+    return new Promise((resolve, reject) => {
+      let finished = false;
+      const source = new EventSource(
+        `${API}/api/scan/stream?repo_path=${encodeURIComponent(repoPath)}`
+      );
+
+      source.onmessage = (message) => {
+        const event = JSON.parse(message.data);
+        if (event.type === "start") {
+          setScanMeta({ command: event.command, total: event.files, scanned: 0 });
+          log(`$ ${event.command}`, "cmd");
+          log(event.message, "dim");
+        } else if (event.type === "file") {
+          setScanMeta((meta) => ({ ...meta, scanned: event.index }));
+          log(
+            `[${event.index}/${event.total}] ${event.file}` +
+              (event.count ? `  →  ${event.count} finding(s)` : "  ✓ clean"),
+            event.count ? "warn" : "ok"
+          );
+          event.findings.forEach((f) =>
+            log(
+              `      ${f.test_id} ${f.severity.padEnd(6)} line ${f.line}: ${f.text}`,
+              f.severity.toLowerCase()
+            )
+          );
+        } else if (event.type === "done") {
+          finished = true;
+          source.close();
+          const s = event.summary || {};
+          log(
+            `Scan complete in ${event.duration_ms} ms: ${s.total} findings ` +
+              `(HIGH ${s.high} · MEDIUM ${s.medium} · LOW ${s.low})`,
+            "done"
+          );
+          setScanMeta((meta) => ({
+            ...meta,
+            scanned: meta?.total,
+            duration_ms: event.duration_ms,
+            command: event.command,
+            version: event.bandit_version,
+          }));
+          resolve(event);
+        } else if (event.type === "error") {
+          finished = true;
+          source.close();
+          reject(new Error(event.message));
+        }
+      };
+
+      source.onerror = () => {
+        if (finished) return;
+        finished = true;
+        source.close();
+        log("Live stream unavailable - running a regular scan...", "dim");
+        apiRequest("/api/scan", {
+          method: "POST",
+          body: JSON.stringify({ repo_path: repoPath }),
+        })
+          .then((data) => {
+            setScanMeta({ command: data.command });
+            log(`Scan complete: ${data.summary?.total ?? 0} findings`, "done");
+            resolve(data);
+          })
+          .catch(reject);
+      };
+    });
   }
 
   /*
@@ -740,6 +840,7 @@ async function generatePatch(model = "qwen2.5-coder") {
               "Validation",
               ShieldCheck,
             ],
+            ["Bandit Guide", BookOpen],
             ["Evaluation", BarChart3],
           ].map(
             ([name, Icon]) => (
@@ -1043,6 +1144,10 @@ async function generatePatch(model = "qwen2.5-coder") {
             }
             analysis={analysis}
             analyzing={analyzing}
+            scanLog={scanLog}
+            scanMeta={scanMeta}
+            importNote={importNote}
+            importFolder={importFolder}
           />
         )}
 
@@ -1136,6 +1241,13 @@ async function generatePatch(model = "qwen2.5-coder") {
         {activeNav === "Evaluation" && (
           <Evaluation />
         )}
+
+        {activeNav === "Bandit Guide" && (
+          <BanditGuide
+            findings={findings}
+            scanMeta={scanMeta}
+          />
+        )}
       </main>
 
     </div>
@@ -1166,6 +1278,10 @@ function Overview({
   analyzeFinding,
   analysis,
   analyzing,
+  scanLog,
+  scanMeta,
+  importNote,
+  importFolder,
 }) {
   return (
     <>
@@ -1306,12 +1422,21 @@ function Overview({
                         size={15}
                       />
 
-                      IMPORT GITHUB
+                      IMPORT REPO
                     </>
                   )}
                 </button>
 
               </div>
+
+              <RepoPresets
+                disabled={importing}
+                onPick={(url) => {
+                  setGithubUrl(url);
+                  importGitHubRepository(url);
+                }}
+                onFolder={importFolder}
+              />
 
               {/* OR */}
               <div
@@ -1512,6 +1637,10 @@ function Overview({
                 </div>
               )}
 
+              {importNote && (
+                <div className="rf-note">{importNote}</div>
+              )}
+
               {/* RUN SCAN */}
               <button
                 className="primary-btn scan-button"
@@ -1648,6 +1777,12 @@ function Overview({
         />
 
       </section>
+
+      <ScanTerminal
+        log={scanLog}
+        scanning={scanning}
+        meta={scanMeta}
+      />
 
       {/* FINDINGS */}
       <section className="content-grid">
@@ -1985,6 +2120,8 @@ function ContextPanel({
             </div>
 
           </div>
+
+          <RuleExplainer finding={finding} compact />
 
           {analyzing ? (
             <div className="loading-box">
@@ -2684,7 +2821,6 @@ function GraphView({
 ========================================================= */
 
 function ImpactSection({
-  finding,
   analysis,
   onNext,
 }) {
@@ -3023,6 +3159,19 @@ function PatchView({
         </div>
 
       </div>
+
+      {patchData?.patch?.fallback_used && (
+        <div className="rf-note warn">
+          <b>Automatic model fallback:</b>{" "}
+          {patchData.patch.attempts
+            .map((a) =>
+              a.ok
+                ? `${a.model} ✓ produced the patch`
+                : `${a.model} ✗ ${a.error.slice(0, 90)}`
+            )
+            .join("  →  ")}
+        </div>
+      )}
 
       <div className="patch-layout">
 
@@ -3712,6 +3861,13 @@ function ValidationView({
           </div>
 
         </div>
+      )}
+
+      {/* BANDIT BEFORE / AFTER */}
+      {validation?.comparison && (
+        <BanditComparison
+          comparison={validation.comparison}
+        />
       )}
 
       {/* VERIFIED DOWNLOAD */}

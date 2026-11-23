@@ -24,6 +24,7 @@ error message.
 
 from __future__ import annotations
 
+import difflib
 import os
 import re
 import shutil
@@ -235,7 +236,12 @@ def detect_source_remote(repo: Path) -> Optional[RemoteRepo]:
     """Return the GitHub/GitLab origin of a local clone, if any."""
 
     if not (repo / ".git").exists():
-        return None
+        # ZIP-fallback imports record their origin in a sibling file.
+        marker = repo.parent / f"{repo.name}.source"
+        try:
+            return parse_remote_url(marker.read_text(encoding="utf-8"))
+        except (OSError, PublishError):
+            return None
     try:
         url = run_git(["remote", "get-url", "origin"], cwd=repo)
         return parse_remote_url(url)
@@ -306,10 +312,26 @@ def prepare_fix_on_clone(
     files: dict[str, bytes],
     message: str,
     author: tuple[str, str],
+    clone_url: Optional[str] = None,
+    token: Optional[str] = None,
 ) -> None:
-    """Copy an existing clone (with history) and commit the fix on a branch."""
+    """Commit the fix on a branch on top of the remote's history.
 
-    shutil.copytree(repo, workdir, ignore=_ignore_keep_git)
+    Uses the local clone when it has ``.git``; otherwise (ZIP snapshot)
+    makes a fresh shallow clone of ``clone_url``.
+    """
+
+    if (repo / ".git").exists():
+        shutil.copytree(repo, workdir, ignore=_ignore_keep_git)
+    else:
+        if not clone_url:
+            raise PublishError("No Git history available to branch from.")
+        workdir.parent.mkdir(parents=True, exist_ok=True)
+        run_git(
+            ["clone", "-q", "--depth", "1", clone_url, str(workdir)],
+            cwd=workdir.parent,
+            token=token,
+        )
     run_git(["checkout", "-B", branch], cwd=workdir)
     _write_files(workdir, files)
     _commit(workdir, message, author)
@@ -439,6 +461,8 @@ class GitHubClient(_ApiClient):
             "username": login,
             "name": data.get("name") or login,
             "email": f"{data['id']}+{login}@users.noreply.github.com",
+            "avatar_url": data.get("avatar_url"),
+            "profile_url": data.get("html_url") or f"https://github.com/{login}",
         }
 
     def get_repo(self, remote: RemoteRepo) -> dict:
@@ -541,6 +565,8 @@ class GitLabClient(_ApiClient):
             "username": username,
             "name": data.get("name") or username,
             "email": f"{data['id']}-{username}@users.noreply.{self.host}",
+            "avatar_url": data.get("avatar_url"),
+            "profile_url": data.get("web_url") or f"https://{self.host}/{username}",
         }
 
     def get_repo(self, remote: RemoteRepo) -> dict:
@@ -652,6 +678,12 @@ def resolve_mode(
     user = client.current_user()
     plan = {
         "user": user["username"],
+        "profile": {
+            "username": user["username"],
+            "name": user.get("name"),
+            "avatar_url": user.get("avatar_url"),
+            "profile_url": user.get("profile_url"),
+        },
         "author": (user["name"], user["email"]),
         "provider": provider,
         "source": source.to_dict() if source else None,
@@ -749,12 +781,94 @@ def build_pr_body(summary: dict) -> str:
         f"- Bandit re-scan: target rule `{finding.get('test_id', '?')}` "
         f"{'removed' if security.get('target_removed') else 'still present'}; "
         f"{security.get('findings_after', '?')} findings remain in the repository",
+    ]
+    comparison = summary.get("comparison") or {}
+    if comparison:
+        before = comparison.get("before") or {}
+        after = comparison.get("after") or {}
+        lines.append(
+            f"- Bandit totals: {before.get('total', '?')} before -> "
+            f"{after.get('total', '?')} after "
+            f"(HIGH {before.get('HIGH', 0)} -> {after.get('HIGH', 0)}); "
+            f"{len(comparison.get('removed') or [])} removed, "
+            f"{len(comparison.get('introduced') or [])} introduced"
+        )
+    lines += [
         "",
         "_The patch was generated with repository-aware RAG + LLM, checked by "
         "AST guardrails, and validated in an isolated sandbox before this "
         "request was opened. Please review it before merging._",
     ]
     return "\n".join(lines)
+
+
+REPORT_FILE = "SECURITY_REMEDIATION_REPORT.md"
+
+
+def unified_diff(repo: Path, files: dict[str, bytes]) -> str:
+    """Unified diff of each changed file against the original repository."""
+
+    chunks = []
+    for relative, content in files.items():
+        before_path = repo / relative
+        before = (
+            before_path.read_bytes().decode("utf-8", "replace")
+            if before_path.is_file()
+            else ""
+        )
+        after = content.decode("utf-8", "replace")
+        chunks.extend(
+            difflib.unified_diff(
+                before.replace("\r\n", "\n").splitlines(keepends=True),
+                after.replace("\r\n", "\n").splitlines(keepends=True),
+                fromfile=f"a/{relative}",
+                tofile=f"b/{relative}",
+            )
+        )
+    return "".join(chunks)
+
+
+def build_report(summary: dict, diff: str) -> str:
+    """Markdown remediation report committed next to the fix."""
+
+    finding = summary.get("finding") or {}
+    lines = [
+        "# Security Remediation Report",
+        "",
+        f"_Generated by SecurePatch on {time.strftime('%Y-%m-%d %H:%M:%S %Z')}_",
+        "",
+        build_pr_body(summary).replace(
+            "## SecurePatch verified security fix", "## Summary"
+        ),
+        "",
+        "## Pipeline",
+        "",
+        "1. **Detect** - Bandit static analysis (SAST) found the issue.",
+        "2. **Understand** - AST analysis located the vulnerable function; "
+        "the source graph mapped its callers and tests.",
+        "3. **Retrieve** - RAG pulled related repository code as context.",
+        "4. **Repair** - a local LLM generated a minimal patch for that function only.",
+        "5. **Guardrails** - the patch was checked to be one valid function with the "
+        "same name and no `eval`/`exec`/`os.system`/`shell=True`.",
+        "6. **Verify** - the patch was applied in an isolated sandbox, the test suite "
+        "was run, and Bandit re-scanned the code.",
+        "",
+        "## Change",
+        "",
+        "```diff",
+        diff.rstrip() or "(no textual change)",
+        "```",
+        "",
+        "## References",
+        "",
+    ]
+    if finding.get("more_info"):
+        lines.append(f"- Bandit documentation: {finding['more_info']}")
+    cwe = (finding.get("issue_cwe") or {}).get("id")
+    if cwe:
+        lines.append(f"- CWE-{cwe}: https://cwe.mitre.org/data/definitions/{cwe}.html")
+    lines.append("- Bandit: https://bandit.readthedocs.io/")
+    return "\n".join(lines) + "\n"
 
 
 def publish(
@@ -770,6 +884,7 @@ def publish(
     private: bool = True,
     open_request: bool = True,
     request_to_upstream: bool = False,
+    include_report: bool = True,
     client=None,
     url_for: Callable[[RemoteRepo, str], str] = authenticated_url,
 ) -> dict:
@@ -791,7 +906,19 @@ def publish(
         f"{finding.get('issue_text', '')}\n"
         "Verified by SecurePatch (pytest + Bandit re-scan)."
     )
+    diff = unified_diff(repo, files)
     body = build_pr_body(summary)
+    if diff:
+        body += (
+            "\n\n<details><summary>Code change (diff)</summary>\n\n"
+            f"```diff\n{diff.rstrip()}\n```\n</details>"
+        )
+    if include_report:
+        files = {
+            **files,
+            REPORT_FILE: build_report(summary, diff).encode("utf-8"),
+        }
+        body += f"\n\nFull report: `{REPORT_FILE}` in this branch."
     noun = "pull request" if provider == "github" else "merge request"
 
     work_root.mkdir(parents=True, exist_ok=True)
@@ -801,6 +928,8 @@ def publish(
         "reason": plan["reason"],
         "provider": provider,
         "user": plan["user"],
+        "profile": plan["profile"],
+        "diff": diff,
         "branch": branch,
         "request_url": None,
         "request_type": noun,
@@ -810,7 +939,16 @@ def publish(
         if mode in {"branch", "fork"}:
             base = plan["default_branch"]
             target = source if mode == "branch" else client.fork(source)
-            prepare_fix_on_clone(repo, workdir, branch, files, message, author)
+            prepare_fix_on_clone(
+                repo,
+                workdir,
+                branch,
+                files,
+                message,
+                author,
+                clone_url=url_for(target, token),
+                token=token,
+            )
             push_branches(workdir, url_for(target, token), [branch], token)
             if open_request:
                 pr_target = (

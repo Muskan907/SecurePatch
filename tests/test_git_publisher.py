@@ -307,3 +307,47 @@ def test_publish_new_repo_for_zip_upload(tmp_path):
     files = git(remote, "ls-tree", "-r", "--name-only", "main")
     assert "__pycache__" not in files
     assert result["request_url"].endswith("/pull/1")
+
+
+def test_publish_adds_report_and_diff(source_repo, tmp_path):
+    remote = bare_copy(source_repo, tmp_path / "fork.git")
+    result = publish(
+        repo=source_repo,
+        work_root=tmp_path / "work",
+        files=FIXED,
+        summary=SUMMARY,
+        provider="github",
+        token="tok",
+        client=FakeClient(can_push=True),
+        url_for=lambda target, token: str(remote),
+    )
+    assert "-os.system(cmd)" in result["diff"]
+    assert "+subprocess.run(['ls'])" in result["diff"]
+    report = git(remote, "show", f"{result['branch']}:SECURITY_REMEDIATION_REPORT.md")
+    assert "Security Remediation Report" in report
+    assert "```diff" in report
+
+
+def test_publish_zip_snapshot_clones_remote(source_repo, tmp_path):
+    """A ZIP-fallback import has no .git: publish clones the remote instead."""
+    remote = bare_copy(source_repo, tmp_path / "origin.git")
+    snapshot = tmp_path / "snapshots" / "alice_demo_1"
+    snapshot.parent.mkdir()
+    (snapshot).mkdir()
+    (snapshot / "app.py").write_text("import os\nos.system(cmd)\n")
+    (snapshot.parent / "alice_demo_1.source").write_text(
+        "https://github.com/alice/demo"
+    )
+    client = FakeClient(can_push=True)
+    result = publish(
+        repo=snapshot,
+        work_root=tmp_path / "work",
+        files=FIXED,
+        summary=SUMMARY,
+        provider="github",
+        token="tok",
+        client=client,
+        url_for=lambda target, token: remote.as_uri(),
+    )
+    assert result["mode"] == "branch"
+    assert "subprocess.run" in git(remote, "show", f"{result['branch']}:app.py")

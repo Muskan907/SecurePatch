@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel
 from urllib.parse import urlparse
 import ast
@@ -26,11 +26,15 @@ except Exception:
 from src.llm_adapter import (
     generate as generate_llm,
     configured_models,
+    fallback_chain,
     MODEL_REGISTRY,
     ollama_is_available,
     installed_models,
 )
 from src.repository_rag import RepositoryRAG, format_context
+from src.repo_importer import ImportFailed, import_remote
+from src.bandit_stream import bandit_command, iter_scan, sse
+from src.bandit_catalog import catalog as bandit_catalog, compare_findings, explain
 from src.git_publisher import (
     PublishError,
     collect_changed_files,
@@ -1068,6 +1072,7 @@ def run_security_validation(
         "target_removed": len(target_findings) == 0,
         "findings_after": len(findings),
         "target_findings": target_findings,
+        "all_findings": findings,
         "output": "\n".join(output_lines),
     }
 
@@ -1094,44 +1099,23 @@ def import_github_repository(data: dict):
         / f"{owner}_{repo_name}_{repo_id}"
     )
     try:
-        result = subprocess.run(
-            [
-                "git",
-                "clone",
-                "--depth",
-                "1",
-                clean_url,
-                str(destination),
-            ],
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            timeout=120,
-        )
-        if result.returncode != 0:
-            if destination.exists():
-                shutil.rmtree(destination)
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    "Could not clone repository. "
-                    + result.stderr[-1000:]
-                ),
-            )
-    except subprocess.TimeoutExpired:
-        if destination.exists():
-            shutil.rmtree(destination)
+        imported = import_remote(remote, destination)
+    except ImportFailed as exc:
         raise HTTPException(
-            status_code=408,
-            detail="Repository clone timed out.",
+            status_code=400,
+            detail=f"Could not import {clean_url}. {exc}",
         )
     return {
         "success": True,
         "name": repo_name,
         "source": remote.provider,
         "repo_path": str(destination),
-        "message": f"{remote.provider.title()} repository imported successfully.",
+        "import_method": imported["method"],
+        "import_log": imported["log"],
+        "message": (
+            f"{remote.provider.title()} repository imported successfully"
+            + (" (ZIP fallback)." if imported["method"] == "zip" else ".")
+        ),
     }
 
 
@@ -1226,6 +1210,63 @@ async def upload_repository(
             shutil.rmtree(upload_dir)
         raise
 
+FOLDER_SKIP_PARTS = {
+    ".git", "node_modules", "venv", ".venv", "__pycache__",
+    ".pytest_cache", ".mypy_cache", ".tox", "dist", "build",
+}
+MAX_FOLDER_BYTES = 100 * 1024 * 1024
+
+
+@app.post("/api/repositories/upload-folder")
+async def upload_folder(
+    files: list[UploadFile] = File(...),
+    paths: list[str] = Form(...),
+):
+    """Upload a local folder (browser folder picker) without zipping it."""
+    if not files or len(files) != len(paths):
+        raise HTTPException(status_code=400, detail="No folder files received.")
+    repo_id = uuid.uuid4().hex[:8]
+    upload_dir = REPOSITORY_ROOT / f"folder_{repo_id}"
+    root = upload_dir.resolve()
+    total = 0
+    written = 0
+    try:
+        for upload, relative in zip(files, paths):
+            parts = [p for p in relative.replace("\\", "/").split("/") if p]
+            if not parts or any(p in {".", ".."} for p in parts):
+                raise HTTPException(status_code=400, detail="Unsafe file path.")
+            if FOLDER_SKIP_PARTS.intersection(parts):
+                continue
+            target = (upload_dir / Path(*parts)).resolve()
+            if root not in target.parents:
+                raise HTTPException(status_code=400, detail="Unsafe file path.")
+            content = await upload.read()
+            total += len(content)
+            if total > MAX_FOLDER_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Folder is too large. Maximum size is 100 MB.",
+                )
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(content)
+            written += 1
+    except HTTPException:
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        raise
+    if not written:
+        shutil.rmtree(upload_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail="The folder contains no files.")
+    entries = list(upload_dir.iterdir())
+    actual_repo = entries[0] if len(entries) == 1 and entries[0].is_dir() else upload_dir
+    return {
+        "success": True,
+        "name": actual_repo.name,
+        "source": "folder",
+        "repo_path": str(actual_repo),
+        "files": written,
+        "message": f"Folder uploaded ({written} files).",
+    }
+
 # =========================================================
 # DOWNLOAD VERIFIED REPOSITORY
 
@@ -1319,7 +1360,52 @@ def scan(request: ScanRequest):
     return {
         "summary": finding_summary(findings),
         "findings": findings,
+        "command": bandit_command(repo),
+        "bandit_version": bandit_version(),
+        "metrics": (result.get("metrics") or {}).get("_totals", {}),
+        "errors": result.get("errors", []),
     }
+
+
+def bandit_version() -> str:
+    try:
+        import bandit
+        return bandit.__version__
+    except Exception:
+        return "unknown"
+
+
+@app.get("/api/bandit/rules")
+def bandit_rules():
+    """Plain-English explanation of Bandit rules, severity and confidence."""
+    return {**bandit_catalog(), "bandit_version": bandit_version()}
+
+
+@app.get("/api/bandit/explain/{test_id}")
+def bandit_explain(test_id: str):
+    return explain(test_id.upper())
+
+
+@app.get("/api/scan/stream")
+def scan_stream(repo_path: str):
+    """Live scan: Server-Sent Events, one event per scanned file."""
+    repo = resolve_repo(repo_path)
+
+    def events():
+        try:
+            for event in iter_scan(repo):
+                if event["type"] == "done":
+                    event["summary"] = finding_summary(event["findings"])
+                    event["bandit_version"] = bandit_version()
+                yield sse(event)
+        except Exception as exc:  # report instead of dropping the stream
+            yield sse({"type": "error", "message": str(exc)})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
 
 # =========================================================
 # ANALYZE
@@ -1522,31 +1608,14 @@ def generate_patch(request: PatchRequest):
         impact=impact,
         retrieved_context=retrieved_context,
     )
-    try:
-        llm_result = generate_llm(
-            enriched_prompt,
-            model=request.model or "qwen2.5-coder",
-        )
-        print("\n" + "=" * 80)
-        print("RAW LLM RESPONSE")
-        print("=" * 80)
-        print(llm_result.text)
-        print("=" * 80 + "\n")
-
-        repaired_function = normalize_function_output(
-            llm_result.text,
-            function["name"],
-        )
-        validate_patch_guardrails(
-            repaired_function,
-            function["name"],
-        )
-    except Exception as exc:
-        raise HTTPException(
-            status_code=502,
-            detail=f"LLM generation failed: {exc}",
-        )
+    llm_result, repaired_function, attempts = generate_with_fallback(
+        enriched_prompt,
+        request.model or "qwen2.5-coder",
+        function["name"],
+    )
     patch = {
+        "attempts": attempts,
+        "fallback_used": len(attempts) > 1,
         "provider": llm_result.provider,
         "model": llm_result.model,
         "latency_ms": llm_result.latency_ms,
@@ -1679,6 +1748,12 @@ def validate(request: ValidateRequest):
         sandbox,
         finding.get("test_id"),
     )
+    comparison = compare_findings(
+        run_bandit(str(repo)).get("results", []),
+        security.pop("all_findings", []),
+        repo,
+        sandbox,
+    )
     verified = (
         regression["passed"]
         and security["passed"]
@@ -1729,6 +1804,12 @@ def validate(request: ValidateRequest):
                         key: security.get(key)
                         for key in ("target_removed", "findings_after")
                     },
+                    "comparison": {
+                        "before": comparison["before"],
+                        "after": comparison["after"],
+                        "removed": comparison["removed"],
+                        "introduced": comparison["introduced"],
+                    },
                 },
                 indent=2,
             ),
@@ -1740,6 +1821,7 @@ def validate(request: ValidateRequest):
         "status": LAST_VALIDATION_STATUS,
         "regression": regression,
         "security": security,
+        "comparison": comparison,
         "patch": {
             "applied": True,
             "target_file": str(target),
@@ -1956,6 +2038,42 @@ def validate_patch_guardrails(patch: str, expected_function: str) -> None:
                     raise ValueError(
                         "Guardrail blocked: subprocess shell=True."
                     )
+
+def generate_with_fallback(prompt: str, model: str, function_name: str):
+    """Try the requested model, then lighter installed models.
+
+    A model "fails" when Ollama errors (500 / crash / timeout), or when its
+    output is not the expected function or is blocked by the guardrails.
+    Returns (llm_result, repaired_function, attempts).
+    """
+    chain = fallback_chain(
+        model,
+        installed_models() if ollama_is_available() else None,
+    )
+    attempts = []
+    for model_key in chain:
+        try:
+            llm_result = generate_llm(prompt, model=model_key)
+            print("\n" + "=" * 80)
+            print(f"RAW LLM RESPONSE ({model_key})")
+            print("=" * 80)
+            print(llm_result.text)
+            print("=" * 80 + "\n")
+            repaired = normalize_function_output(llm_result.text, function_name)
+            validate_patch_guardrails(repaired, function_name)
+            attempts.append({"model": model_key, "ok": True, "error": None})
+            return llm_result, repaired, attempts
+        except Exception as exc:
+            attempts.append({"model": model_key, "ok": False, "error": str(exc)})
+            # Ollama unreachable: other models will fail the same way.
+            if "Could not connect to Ollama" in str(exc):
+                break
+    summary = "; ".join(f"{a['model']}: {a['error']}" for a in attempts)
+    raise HTTPException(
+        status_code=502,
+        detail=f"LLM generation failed for all models. {summary}",
+    )
+
 
 def normalize_function_output(text: str, function_name: str) -> str:
     """
