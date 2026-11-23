@@ -206,13 +206,16 @@ export function ScanTerminal({ log, scanning, meta }) {
       <div className="bg-progress">
         <div style={{ width: `${scanning ? progress : 100}%` }} />
       </div>
+      {/* column-reverse keeps the view pinned to the newest line */}
       <div className="bg-log">
-        {log.map((line, i) => (
-          <div key={i} className={`bg-log-line ${line.tone || ""}`}>
-            {line.text}
-          </div>
-        ))}
-        {scanning && <div className="bg-log-line cursor">▍</div>}
+        <div>
+          {log.map((line, i) => (
+            <div key={i} className={`bg-log-line ${line.tone || ""}`}>
+              {line.text}
+            </div>
+          ))}
+          {scanning && <div className="bg-log-line cursor">▍</div>}
+        </div>
       </div>
     </section>
   );
