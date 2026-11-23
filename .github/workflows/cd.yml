@@ -1,0 +1,186 @@
+name: CD
+
+# main          -> build, smoke-test and push images tagged :main, :sha-xxxx, :latest
+# tag v1.2.3    -> also :1.2.3 / :1.2, plus a GitHub Release
+# pull request  -> build + smoke-test only (nothing is pushed)
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # -------------------------------------------------------
+  # Build the backend image and check it actually starts
+  # -------------------------------------------------------
+  smoke-test:
+    name: Smoke test backend container
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          load: true
+          tags: securepatch-backend:smoke
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+
+      - name: Start container and wait for /api/health
+        run: |
+          docker run -d --name sp -p 8000:8000 securepatch-backend:smoke
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8000/api/health; then echo; exit 0; fi
+            sleep 3
+          done
+          echo "Backend did not become healthy"; docker logs sp; exit 1
+
+      - name: Scan the sample repo through the API
+        run: |
+          curl -fs -X POST http://localhost:8000/api/scan \
+            -H "Content-Type: application/json" \
+            -d '{"repo_path":"sample_repo"}' | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['summary']); assert d['summary']['total']>0"
+
+  # -------------------------------------------------------
+  # Build and push all images to GitHub Container Registry
+  # -------------------------------------------------------
+  images:
+    name: Build & push ${{ matrix.name }}
+    needs: smoke-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: backend
+            context: .
+            file: backend/Dockerfile
+          - name: frontend
+            context: frontend
+            file: frontend/Dockerfile
+          - name: sandbox
+            context: sandbox
+            file: sandbox/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Lowercase image owner
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.OWNER }}/securepatch-${{ matrix.name }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build (and push outside PRs)
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.file }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}
+
+  # -------------------------------------------------------
+  # Versioned release with notes and deployment files
+  # -------------------------------------------------------
+  release:
+    name: GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: images
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            docker-compose.yml
+            docker-compose.prod.yml
+
+  # -------------------------------------------------------
+  # Optional: deploy to a server over SSH.
+  # Runs only when the DEPLOY_HOST secret is configured.
+  # -------------------------------------------------------
+  deploy:
+    name: Deploy to server
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    needs: images
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+    steps:
+      - name: Skip when no server is configured
+        if: env.DEPLOY_HOST == ''
+        run: echo "DEPLOY_HOST secret not set - skipping deployment."
+
+      - uses: actions/checkout@v4
+        if: env.DEPLOY_HOST != ''
+
+      - name: Copy compose file
+        if: env.DEPLOY_HOST != ''
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: docker-compose.prod.yml
+          target: /opt/securepatch
+
+      - name: Pull new images and restart
+        if: env.DEPLOY_HOST != ''
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            cd /opt/securepatch
+            export IMAGE_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d
+            docker image prune -f

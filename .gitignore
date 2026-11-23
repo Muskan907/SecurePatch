@@ -1,8 +1,35 @@
+# Python
 venv/
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+pytest-results.xml
+
+# Secrets
 .env
-reports/
-__pycache__/
-*.pyc
+.env.*
+!.env.example
+
+# Frontend
 node_modules/
-__pycache__/
-*.pyc
+frontend/dist/
+
+# Runtime state written by the backend (kept out of git).
+# Experiment results and generated tests ARE committed as evidence.
+workspace/*
+!workspace/experiments/
+!workspace/generated_tests/
+
+# Generated reports
+reports/
+bandit-report.json
+bandit.sarif
+pip-audit.md
+*.backup
+*.zip
