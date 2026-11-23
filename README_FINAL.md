@@ -2,6 +2,30 @@
 
 SecurePatch is an AI-assisted security vulnerability detection and automated patch verification system for Python repositories.
 
+[![CI](https://github.com/Muskan907/SecurePatch/actions/workflows/ci.yml/badge.svg)](https://github.com/Muskan907/SecurePatch/actions/workflows/ci.yml)
+[![CD](https://github.com/Muskan907/SecurePatch/actions/workflows/cd.yml/badge.svg)](https://github.com/Muskan907/SecurePatch/actions/workflows/cd.yml)
+
+## Quick start
+
+| | Command |
+|---|---|
+| Local backend | `.\venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000` |
+| Local frontend | `cd frontend && npm run dev` → http://localhost:5173 |
+| Full stack in Docker | `docker compose up -d --build` → http://localhost:8080 |
+
+## Features at a glance
+
+- **Import** from GitHub/GitLab (with ZIP-download fallback), a ZIP file, or a local folder; one-click vulnerable-repo presets
+- **Live SAST scan**: Bandit results streamed file by file
+- **Bandit Guide**: plain-English rule catalog, severity vs confidence, vulnerable vs safe code, exact command and raw JSON
+- **AST source graph + RAG** context for the LLM
+- **Multi-LLM repair** with automatic fallback to lighter models
+- **Guardrails** and **Docker sandbox** validation (pytest + Bandit re-scan, before/after comparison)
+- **Publish** the verified fix as a branch, fork or new repo with a PR/MR and a remediation report
+- **CI/CD**: lint, tests + coverage, security gates, SARIF, image build/push to GHCR, releases, optional deploy
+
+See [docs/devops.md](docs/devops.md) for the CI/CD pipeline, containers and sandbox details.
+
 ## Research Question
 
 How effectively can locally deployed LLMs automatically generate secure patches for Python vulnerabilities, and how does patch quality vary across different LLMs?

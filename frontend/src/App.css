@@ -399,7 +399,7 @@ button { cursor: pointer; }
 .bg-command span { color: #7fe8a9; }
 .bg-progress { height: 3px; background: #14201a; border-radius: 3px; overflow: hidden; margin-bottom: 10px; }
 .bg-progress div { height: 100%; background: #7fe8a9; transition: width .2s; }
-.bg-log { max-height: 260px; overflow-y: auto; background: #040806; border: 1px solid #14201a; border-radius: 8px; padding: 10px 12px; font: 10px/1.7 "DM Mono", monospace; }
+.bg-log { max-height: 260px; overflow-y: auto; display: flex; flex-direction: column-reverse; background: #040806; border: 1px solid #14201a; border-radius: 8px; padding: 10px 12px; font: 10px/1.7 "DM Mono", monospace; }
 .bg-log-line { white-space: pre-wrap; word-break: break-word; color: #8ea097; }
 .bg-log-line.cmd { color: #c9d9d0; }
 .bg-log-line.ok { color: #5c7a69; }
