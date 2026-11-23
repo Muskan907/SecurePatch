@@ -12,6 +12,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import textwrap
 import uuid
@@ -30,6 +31,15 @@ from src.llm_adapter import (
     installed_models,
 )
 from src.repository_rag import RepositoryRAG, format_context
+from src.git_publisher import (
+    PublishError,
+    collect_changed_files,
+    detect_source_remote,
+    make_client,
+    parse_remote_url,
+    publish as publish_to_remote,
+    resolve_mode,
+)
 
 # =========================================================
 # APP
@@ -1068,40 +1078,16 @@ def run_security_validation(
 
 
 @app.post("/api/repositories/github")
+@app.post("/api/repositories/git")
 def import_github_repository(data: dict):
-    url = data.get("url", "").strip()
-    if not url:
-        raise HTTPException(
-            status_code=400,
-            detail="GitHub repository URL is required.",
-        )
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"}:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid GitHub repository URL.",
-        )
-    if parsed.netloc.lower() not in {
-        "github.com",
-        "www.github.com",
-    }:
-        raise HTTPException(
-            status_code=400,
-            detail="Only GitHub repository URLs are currently supported.",
-        )
-    parts = parsed.path.strip("/").split("/")
-    if len(parts) < 2:
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid GitHub repository URL.",
-        )
-    owner = parts[0]
-    repo_name = parts[1]
-    if repo_name.endswith(".git"):
-        repo_name = repo_name[:-4]
-    clean_url = (
-        f"https://github.com/{owner}/{repo_name}.git"
-    )
+    """Clone a public GitHub or GitLab repository."""
+    try:
+        remote = parse_remote_url(data.get("url", ""))
+    except PublishError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    owner = remote.owner.replace("/", "_")
+    repo_name = remote.name
+    clean_url = remote.clone_url
     repo_id = uuid.uuid4().hex[:8]
     destination = (
         REPOSITORY_ROOT
@@ -1143,9 +1129,9 @@ def import_github_repository(data: dict):
     return {
         "success": True,
         "name": repo_name,
-        "source": "github",
+        "source": remote.provider,
         "repo_path": str(destination),
-        "message": "GitHub repository imported successfully.",
+        "message": f"{remote.provider.title()} repository imported successfully.",
     }
 
 
@@ -1715,6 +1701,34 @@ def validate(request: ValidateRequest):
                     "sandbox_path": str(
                         SANDBOX_ROOT.resolve()
                     ),
+                    # Everything needed to publish this exact fix later.
+                    "repo_path": str(repo),
+                    "target_file": Path(target)
+                    .resolve()
+                    .relative_to(sandbox.resolve())
+                    .as_posix(),
+                    "function": function.get("name"),
+                    "finding": {
+                        key: finding.get(key)
+                        for key in (
+                            "test_id",
+                            "test_name",
+                            "issue_severity",
+                            "issue_confidence",
+                            "issue_cwe",
+                            "issue_text",
+                            "line_number",
+                            "more_info",
+                        )
+                    },
+                    "regression": {
+                        key: regression.get(key)
+                        for key in ("passed_count", "failed_count")
+                    },
+                    "security": {
+                        key: security.get(key)
+                        for key in ("target_removed", "findings_after")
+                    },
                 },
                 indent=2,
             ),
@@ -1739,6 +1753,109 @@ def validate(request: ValidateRequest):
 # ROOT / HEALTH
 
 # =========================================================
+
+
+# =========================================================
+# PUBLISH VERIFIED FIX TO GITHUB / GITLAB
+
+# =========================================================
+# Outside the project so `uvicorn --reload` never restarts mid-publish.
+PUBLISH_ROOT = Path(tempfile.gettempdir()) / "securepatch_publish"
+
+
+class PublishRequest(BaseModel):
+    repo_path: str
+    provider: str  # "github" | "gitlab"
+    token: str
+    mode: str = "auto"  # auto | branch | fork | new_repo
+    new_repo_name: str | None = None
+    private: bool = True
+    open_request: bool = True
+    request_to_upstream: bool = False
+
+
+def load_verified_marker(repo_path: str) -> dict:
+    """Return the validation marker if this repo has a VERIFIED fix."""
+    repo = resolve_repo(repo_path)
+    try:
+        marker = json.loads(VALIDATION_MARKER.read_text(encoding="utf-8"))
+    except Exception:
+        marker = {}
+    if marker.get("status") != "VERIFIED" or not SANDBOX_ROOT.exists():
+        raise HTTPException(
+            status_code=403,
+            detail="Publishing is available only after a VERIFIED validation.",
+        )
+    if Path(marker.get("repo_path", "")).resolve() != repo:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "The verified fix belongs to a different repository. "
+                "Validate a patch for this repository first."
+            ),
+        )
+    return marker
+
+
+@app.get("/api/publish/source")
+def publish_source(repo_path: str):
+    """Where did this code come from? (no token needed)"""
+    remote = detect_source_remote(resolve_repo(repo_path))
+    return {
+        "has_remote": remote is not None,
+        "source": remote.to_dict() if remote else None,
+        "suggested_provider": remote.provider if remote else "github",
+    }
+
+
+@app.post("/api/publish/preview")
+def publish_preview(request: PublishRequest):
+    """Check the token and explain what publishing would do."""
+    repo = resolve_repo(request.repo_path)
+    try:
+        plan = resolve_mode(
+            request.mode,
+            detect_source_remote(repo),
+            request.provider,
+            make_client(request.provider, request.token),
+        )
+    except PublishError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
+    plan.pop("author", None)
+    return plan
+
+
+@app.post("/api/publish")
+def publish_fix(request: PublishRequest):
+    """Push the verified fix as a branch / fork / new repo + PR/MR."""
+    marker = load_verified_marker(request.repo_path)
+    repo = resolve_repo(request.repo_path)
+    files = collect_changed_files(
+        repo,
+        SANDBOX_ROOT,
+        [marker["target_file"]],
+    )
+    if not files:
+        raise HTTPException(
+            status_code=409,
+            detail="The verified sandbox has no changes to publish.",
+        )
+    try:
+        return publish_to_remote(
+            repo=repo,
+            work_root=PUBLISH_ROOT,
+            files=files,
+            summary={**marker, "target_file": marker["target_file"]},
+            provider=request.provider,
+            token=request.token,
+            mode=request.mode,
+            new_repo_name=request.new_repo_name,
+            private=request.private,
+            open_request=request.open_request,
+            request_to_upstream=request.request_to_upstream,
+        )
+    except PublishError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc))
 
 
 @app.get("/")
@@ -2079,8 +2196,23 @@ def build_ai_repair_prompt(finding, analysis, graph, impact, retrieved_context):
     imports = analysis.get("imports") or []
     callers = impact.get("callers") or impact.get("function_calls") or []
     related_tests = analysis.get("tests") or []
+    # Order matters: background context first, the task and vulnerable
+    # function last. If a local model's context window overflows, the
+    # start of the prompt is dropped - never the actual task.
     return f"""
 You are SecurePatch, a security-focused Python vulnerability repair engine.
+RETRIEVED REPOSITORY CONTEXT (background only - do not rewrite this code)
+{retrieved_context or "(No semantic context was supplied for this request.)"}
+SOURCE GRAPH SUMMARY
+Files: {len(graph.get("files", []))}
+Functions: {len(graph.get("functions", []))}
+Nodes: {len(graph.get("nodes", []))}
+Edges: {len(graph.get("edges", []))}
+REPOSITORY IMPACT
+Callers / connected functions:
+{json.dumps(callers, indent=2)}
+Related tests:
+{json.dumps(related_tests, indent=2)}
 TASK
 Repair ONLY the vulnerable function below.
 SECURITY FINDING
@@ -2091,22 +2223,10 @@ CWE: {finding.get("issue_cwe")}
 Issue: {finding.get("issue_text")}
 File: {finding.get("filename")}
 Line: {finding.get("line_number")}
-VULNERABLE FUNCTION
-{function.get("code", "")}
 IMPORTS
 {json.dumps(imports, indent=2)}
-REPOSITORY IMPACT
-Callers / connected functions:
-{json.dumps(callers, indent=2)}
-Related tests:
-{json.dumps(related_tests, indent=2)}
-SOURCE GRAPH SUMMARY
-Files: {len(graph.get("files", []))}
-Functions: {len(graph.get("functions", []))}
-Nodes: {len(graph.get("nodes", []))}
-Edges: {len(graph.get("edges", []))}
-RETRIEVED REPOSITORY CONTEXT
-{retrieved_context or "(No semantic context was supplied for this request.)"}
+VULNERABLE FUNCTION (name: {function.get("name", "")})
+{function.get("code", "")}
 STRICT SECURITY REQUIREMENTS
 1. Fix the reported vulnerability.
 2. Preserve intended application behavior.
@@ -2118,6 +2238,7 @@ STRICT SECURITY REQUIREMENTS
 8. Keep the existing function signature unless a signature change is required for security.
 9. Return ONLY the complete corrected Python function.
 10. Return plain Python code, with no markdown fences and no explanation.
+11. The function MUST be named exactly `{function.get("name", "")}`.
 """.strip()
 
 

@@ -35,6 +35,7 @@ import {
 import "./App.css";
 import AILab from "./AILab";
 import Evaluation from "./Evaluation";
+import PublishPanel from "./PublishPanel";
 
 const API = "http://127.0.0.1:8000";
 
@@ -247,15 +248,15 @@ function App() {
 
   async function importGitHubRepository() {
     if (!githubUrl.trim()) {
-      setError("Enter a GitHub repository URL.");
+      setError("Enter a GitHub or GitLab repository URL.");
       return;
     }
 
     if (
-      !githubUrl.includes("github.com/")
+      !/(github|gitlab)\.com[/:]/.test(githubUrl)
     ) {
       setError(
-        "Please enter a valid GitHub repository URL."
+        "Please enter a valid GitHub or GitLab repository URL."
       );
       return;
     }
@@ -275,8 +276,10 @@ function App() {
       );
 
       setRepoPath(data.repo_path || "");
-      setRepositoryName(data.name || "GitHub Repository");
-      setRepositorySource("GitHub");
+      setRepositoryName(data.name || "Git Repository");
+      setRepositorySource(
+        data.source === "gitlab" ? "GitLab" : "GitHub"
+      );
 
       // Reset previous analysis
       setFindings([]);
@@ -1124,6 +1127,7 @@ async function generatePatch(model = "qwen2.5-coder") {
               validatePatch={validatePatch}
               downloading={downloading}
               downloadFixedRepository={downloadFixedRepository}
+              repoPath={repoPath}
               stage={stage}
               onStage={openStage}
             />
@@ -1272,7 +1276,7 @@ function Overview({
                         e.target.value
                       )
                     }
-                    placeholder="https://github.com/username/repository"
+                    placeholder="https://github.com/user/repo  or  https://gitlab.com/group/repo"
                   />
 
                 </div>
@@ -3333,6 +3337,7 @@ function ValidationView({
   validatePatch,
   downloading,
   downloadFixedRepository,
+  repoPath,
   stage,
   onStage,
 }) {
@@ -3767,6 +3772,9 @@ function ValidationView({
           </button>
         </div>
       )}
+
+      {/* PUBLISH TO GITHUB / GITLAB */}
+      {verified && <PublishPanel repoPath={repoPath} />}
 
       {/* VALIDATION PIPELINE */}
       {validation && (
