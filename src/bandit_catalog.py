@@ -7,6 +7,8 @@ a finding. Rules not listed here fall back to Bandit's own metadata.
 
 from __future__ import annotations
 
+import re
+
 DOCS_INDEX = "https://bandit.readthedocs.io/en/latest/plugins/index.html"
 
 SEVERITY_LEVELS = {
@@ -471,6 +473,13 @@ def compare_findings(before: list[dict], after: list[dict], before_root, after_r
     (file, rule, flagged code) and then by (file, rule) counts.
     """
 
+    def code_key(f):
+        # Flagged code without the "123 " line-number prefixes, whitespace-normalised.
+        lines = (f.get("code") or "").splitlines()
+        return " ".join(
+            " ".join(re.sub(r"^\s*\d+\s?", "", line).split()) for line in lines
+        ).strip()
+
     def summarize(f, root):
         return {
             "test_id": f.get("test_id"),
@@ -479,26 +488,42 @@ def compare_findings(before: list[dict], after: list[dict], before_root, after_r
             "severity": f.get("issue_severity"),
             "confidence": f.get("issue_confidence"),
             "text": f.get("issue_text"),
+            "_code": code_key(f),
         }
 
     remaining_after = [summarize(f, after_root) for f in after]
+    before_items = [summarize(f, before_root) for f in before]
     removed, unchanged = [], []
     pool = list(remaining_after)
-    for f in before:
-        item = summarize(f, before_root)
+    matched = set()
+
+    def same_rule(a, b):
+        return a["file"] == b["file"] and a["test_id"] == b["test_id"]
+
+    # Pass 1: identical flagged code = the same, untouched finding.
+    for index, item in enumerate(before_items):
         match = next(
-            (
-                a for a in pool
-                if a["file"] == item["file"] and a["test_id"] == item["test_id"]
-            ),
+            (a for a in pool if same_rule(a, item) and item["_code"] and a["_code"] == item["_code"]),
             None,
         )
-        if match is None:
-            removed.append(item)
-        else:
+        if match is not None:
+            pool.remove(match)
+            matched.add(index)
+            unchanged.append(item)
+    # Pass 2: remaining findings of the same rule, closest line first.
+    for index, item in enumerate(before_items):
+        if index in matched:
+            continue
+        candidates = [a for a in pool if same_rule(a, item)]
+        if candidates:
+            match = min(candidates, key=lambda a: abs((a["line"] or 0) - (item["line"] or 0)))
             pool.remove(match)
             unchanged.append(item)
+        else:
+            removed.append(item)
     introduced = pool
+    for item in removed + introduced + unchanged + remaining_after:
+        item.pop("_code", None)
 
     def count(items):
         result = {"total": len(items), "HIGH": 0, "MEDIUM": 0, "LOW": 0}

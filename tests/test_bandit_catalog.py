@@ -69,3 +69,16 @@ def test_rules_endpoint():
     data = client.get("/api/bandit/rules").json()
     assert "B608" in data["rules"]
     assert client.get("/api/bandit/explain/b608").json()["cwe"] == 89
+
+
+def test_compare_uses_code_to_pick_the_removed_duplicate(tmp_path):
+    """Two findings of one rule: the one whose code changed is 'removed'."""
+    def g(line, code):
+        return {"test_id": "SG-x", "filename": str(tmp_path / "a.py"), "line_number": line,
+                "issue_severity": "HIGH", "code": f"{line} {code}"}
+
+    before = [g(103, "render(template % url)"), g(271, "render(other % name)")]
+    after = [g(268, "render(other % name)")]  # lines shifted up by the patch
+    result = compare_findings(before, after, tmp_path, tmp_path)
+    assert [r["line"] for r in result["removed"]] == [103]
+    assert result["introduced"] == []

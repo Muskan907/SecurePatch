@@ -14,6 +14,7 @@ import tempfile
 import time
 import textwrap
 import uuid
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 import zipfile
 
 try:
@@ -33,6 +34,7 @@ from src.repository_rag import RepositoryRAG, format_context
 from src.repo_importer import ImportFailed, import_remote
 from src.bandit_stream import bandit_command, iter_scan, sse
 from src.sandbox_runner import describe as sandbox_describe, pytest_command
+import src.semgrep_scanner as semgrep
 from src.bandit_catalog import catalog as bandit_catalog, compare_findings, explain
 from src.git_publisher import (
     PublishError,
@@ -84,6 +86,7 @@ REPOSITORY_ROOT = PROJECT_ROOT / "workspace" / "repositories"
 # Persistent validation state.
 # This survives Uvicorn --reload, unlike LAST_VALIDATION_STATUS.
 VALIDATION_MARKER = PROJECT_ROOT / "workspace" / "validation_status.json"
+SCAN_CACHE_ROOT = PROJECT_ROOT / "workspace" / "scan_cache"
 REPOSITORY_ROOT.mkdir(parents=True, exist_ok=True)
 # Local demo state. For a multi-user deployment this should become
 # per-repository/per-validation state instead of a global variable.
@@ -97,6 +100,7 @@ LAST_VALIDATION_STATUS = None
 
 class ScanRequest(BaseModel):
     repo_path: str = "sample_repo"
+    semgrep: bool = True
 
 
 class AnalyzeRequest(BaseModel):
@@ -247,8 +251,12 @@ def get_finding(repo_path, file_path, line):
     because the source changed between scan and request, use the closest
     finding in the same file instead of failing with a misleading 404.
     """
-    data = run_bandit(str(resolve_repo(repo_path)))
+    repo = resolve_repo(repo_path)
+    data = run_bandit(str(repo))
     findings = data.get("results", [])
+    # Semgrep findings from the last scan of this repository.
+    semgrep_findings = semgrep.load_cache(repo, SCAN_CACHE_ROOT)
+    target_file = resolve_file(repo_path, file_path)
     exact_matches = [
         finding
         for finding in findings
@@ -260,6 +268,9 @@ def get_finding(repo_path, file_path, line):
     ]
     if exact_matches:
         return exact_matches[0]
+    semgrep_exact = semgrep.find_in(semgrep_findings, target_file, line, exact=True)
+    if semgrep_exact:
+        return semgrep_exact
     same_file = [
         finding
         for finding in findings
@@ -275,6 +286,9 @@ def get_finding(repo_path, file_path, line):
                 int(finding.get("line_number", 0)) - int(line)
             ),
         )
+    semgrep_near = semgrep.find_in(semgrep_findings, target_file, line, exact=False)
+    if semgrep_near:
+        return semgrep_near
     raise HTTPException(
         status_code=404,
         detail=(
@@ -1054,6 +1068,52 @@ def _run_pytest(sandbox: Path, command: list[str]):
             "output": f"Pytest execution error: {exc}",
         }
 
+def function_span(file_path: Path, name: str):
+    """(first, last) line of a top-level or nested function, or None."""
+    try:
+        tree = ast.parse(file_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, SyntaxError):
+        return None
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
+            first = min([d.lineno for d in node.decorator_list] + [node.lineno])
+            return first, getattr(node, "end_lineno", node.lineno)
+    return None
+
+
+def run_semgrep_file_check(
+    original_file: Path,
+    patched_file: Path,
+    target_rule: str,
+    function_name: str | None = None,
+):
+    """Semgrep the vulnerable file before and after the patch (one run).
+
+    The target counts as removed only if it no longer appears inside the
+    patched function: the same rule may legitimately fire elsewhere.
+    """
+    try:
+        result = semgrep.run_semgrep([original_file, patched_file])
+    except semgrep.SemgrepUnavailable as exc:
+        return {"available": False, "error": str(exc)}
+    original, patched = original_file.resolve(), patched_file.resolve()
+    before = [f for f in result["findings"] if Path(f["filename"]).resolve() == original]
+    after = [f for f in result["findings"] if Path(f["filename"]).resolve() == patched]
+    span = function_span(patched, function_name) if function_name else None
+    target_after = [
+        f for f in after
+        if f["test_id"] == target_rule
+        and (span is None or span[0] <= f["line_number"] <= span[1])
+    ]
+    return {
+        "available": True,
+        "file": original_file.name,
+        "comparison": compare_findings(before, after, original.parent, patched.parent),
+        "target_removed": not target_after,
+        "target_findings": target_after,
+    }
+
+
 def run_security_validation(
     sandbox: Path,
     target_rule: str,
@@ -1367,11 +1427,21 @@ def scan(request: ScanRequest):
         "results",
         [],
     )
+    semgrep_info = {"enabled": request.semgrep}
+    if request.semgrep:
+        try:
+            sg = semgrep.run_semgrep([repo])
+            semgrep.save_cache(repo, sg["findings"], SCAN_CACHE_ROOT)
+            findings = semgrep.merge(findings, sg["findings"])
+            semgrep_info.update(count=len(sg["findings"]), errors=sg["errors"])
+        except semgrep.SemgrepUnavailable as exc:
+            semgrep_info["error"] = str(exc)
     return {
         "summary": finding_summary(findings),
         "findings": findings,
         "command": bandit_command(repo),
         "bandit_version": bandit_version(),
+        "semgrep": semgrep_info,
         "metrics": (result.get("metrics") or {}).get("_totals", {}),
         "errors": result.get("errors", []),
     }
@@ -1397,19 +1467,75 @@ def bandit_explain(test_id: str):
 
 
 @app.get("/api/scan/stream")
-def scan_stream(repo_path: str):
-    """Live scan: Server-Sent Events, one event per scanned file."""
+def scan_stream(repo_path: str, semgrep_enabled: bool = True):
+    """Live scan: Server-Sent Events.
+
+    Bandit streams one event per file while Semgrep runs in parallel in a
+    background thread; the final 'done' event holds the merged findings.
+    """
     repo = resolve_repo(repo_path)
 
     def events():
+        pool = ThreadPoolExecutor(max_workers=1)
+        sg_future = (
+            pool.submit(semgrep.run_semgrep, [repo])
+            if semgrep_enabled and semgrep.semgrep_bin()
+            else None
+        )
         try:
+            if semgrep_enabled and sg_future is None:
+                yield sse({"type": "semgrep", "status": "unavailable",
+                           "message": "Semgrep not installed - Bandit only."})
+            elif sg_future is not None:
+                yield sse({"type": "semgrep", "status": "running",
+                           "message": "Semgrep data-flow scan started in parallel"})
+            done = None
             for event in iter_scan(repo):
                 if event["type"] == "done":
-                    event["summary"] = finding_summary(event["findings"])
-                    event["bandit_version"] = bandit_version()
+                    done = event
+                    break
                 yield sse(event)
+            findings = done["findings"]
+            if sg_future is not None:
+                waited = 0
+                while not sg_future.done():
+                    try:
+                        sg_future.result(timeout=3)
+                    except FuturesTimeout:
+                        waited += 3
+                        yield sse({"type": "semgrep", "status": "running",
+                                   "message": f"Semgrep still analysing data flow... {waited}s"})
+                    except Exception:
+                        break
+                try:
+                    sg = sg_future.result()
+                    semgrep.save_cache(repo, sg["findings"], SCAN_CACHE_ROOT)
+                    merged = semgrep.merge(findings, sg["findings"])
+                    confirmed = sum(1 for f in merged if f.get("confirmed_by"))
+                    yield sse({
+                        "type": "semgrep",
+                        "status": "done",
+                        "count": len(sg["findings"]),
+                        "confirmed": confirmed,
+                        "new": len(merged) - len(findings),
+                        "findings": [
+                            {"test_id": f["test_id"], "severity": f["issue_severity"],
+                             "line": f["line_number"], "text": f["issue_text"][:140],
+                             "file": Path(f["filename"]).name}
+                            for f in sg["findings"]
+                        ][:60],
+                    })
+                    findings = merged
+                except Exception as exc:
+                    yield sse({"type": "semgrep", "status": "failed", "message": str(exc)})
+            done["findings"] = findings
+            done["summary"] = finding_summary(findings)
+            done["bandit_version"] = bandit_version()
+            yield sse(done)
         except Exception as exc:  # report instead of dropping the stream
             yield sse({"type": "error", "message": str(exc)})
+        finally:
+            pool.shutdown(wait=False)
 
     return StreamingResponse(
         events(),
@@ -1748,6 +1874,25 @@ def validate(request: ValidateRequest):
         sandbox,
         finding.get("test_id"),
     )
+    semgrep_check = run_semgrep_file_check(
+        file_path,
+        Path(target),
+        finding.get("test_id"),
+        function.get("name"),
+    )
+    if str(finding.get("test_id", "")).startswith("SG-"):
+        # Bandit cannot see Semgrep rules: Semgrep must confirm the fix.
+        removed = semgrep_check.get("available") and semgrep_check["target_removed"]
+        security.update(
+            passed=bool(removed),
+            target_removed=bool(removed),
+            target_findings=semgrep_check.get("target_findings", []),
+            output=(
+                f"Semgrep target rule {finding['test_id']}: "
+                + ("REMOVED" if removed else "FOUND / not verifiable")
+                + ("" if semgrep_check.get("available") else f" ({semgrep_check.get('error')})")
+            ),
+        )
     comparison = compare_findings(
         run_bandit(str(repo)).get("results", []),
         security.pop("all_findings", []),
@@ -1810,6 +1955,14 @@ def validate(request: ValidateRequest):
                         "removed": comparison["removed"],
                         "introduced": comparison["introduced"],
                     },
+                    "semgrep": (
+                        {
+                            "before": semgrep_check["comparison"]["before"],
+                            "after": semgrep_check["comparison"]["after"],
+                        }
+                        if semgrep_check.get("available")
+                        else None
+                    ),
                 },
                 indent=2,
             ),
@@ -1822,6 +1975,7 @@ def validate(request: ValidateRequest):
         "regression": regression,
         "security": security,
         "comparison": comparison,
+        "semgrep_check": semgrep_check,
         "patch": {
             "applied": True,
             "target_file": str(target),
@@ -1955,6 +2109,7 @@ def health():
         "service": "SecurePatch Backend",
         "version": app.version,
         "sandbox": sandbox_describe(),
+        "semgrep": semgrep.status(),
         "ollama": ollama_is_available(),
     }
 

@@ -103,3 +103,21 @@ pytest -q tests --cov=src --cov=backend         # local test run
 ```
 
 Dependabot opens weekly update PRs for pip, npm, GitHub Actions and Docker base images.
+
+## 8. Second SAST engine: Semgrep
+
+Bandit matches risky **patterns**. Semgrep adds rules that follow **data flow**, e.g. request data reaching an SQL string or `render_template_string`. Both run on every scan: Bandit streams instantly and Semgrep runs in parallel.
+
+| Tag in the UI | Meaning |
+|---|---|
+| `BANDIT` | Only Bandit reports it |
+| `SEMGREP` | Only Semgrep reports it (Bandit missed it) |
+| `BANDIT + SEMGREP` | Both agree: high confidence |
+
+Measured on the demo repositories: on `sample_repo`, Semgrep confirms 8 Bandit findings. On *Vulnerable Flask App* it adds 5 issues Bandit misses: template injection (SSTI) and raw-HTML XSS.
+
+Semgrep findings go through the same pipeline (AI patch, sandbox, verdict). For a Semgrep target, **Semgrep must confirm the rule is gone from the patched function**. Every validation also shows a Semgrep before/after panel for the patched file.
+
+**Setup (once):** `python scripts/setup_semgrep.py`
+
+Semgrep goes into its own environment, `.tools/semgrep`, because it pins `opentelemetry` versions that break ChromaDB. About 270 Python rules from the registry packs `p/default`, `p/python` and `p/flask` are cached in `.tools/python-rules.yml`, so later scans work offline. Telemetry is disabled with `--metrics=off`. The Docker image installs Semgrep the same way and bakes the rules in. Without Semgrep, SecurePatch automatically falls back to Bandit only.

@@ -33,3 +33,4 @@ bandit.sarif
 pip-audit.md
 *.backup
 *.zip
+.tools/

@@ -448,3 +448,9 @@ button { cursor: pointer; }
 @media (max-width: 760px) {
   .bg-levels, .bg-compare, .bg-matrix { grid-template-columns: 1fr; }
 }
+
+/* ===== Scanner source tags ===== */
+.src-tag { display: inline-flex; align-items: center; font: 8px "DM Mono", monospace; letter-spacing: .06em; padding: 3px 7px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+.src-tag.bandit { color: #8ea097; border-color: #26382f; }
+.src-tag.semgrep { color: #b9a4ff; border-color: #44396b; background: #120f1d; }
+.src-tag.both { color: #7fe8a9; border-color: #2f6a47; background: #0a1a11; }

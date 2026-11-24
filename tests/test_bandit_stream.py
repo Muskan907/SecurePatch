@@ -34,7 +34,7 @@ def test_stream_matches_cli():
 def test_scan_stream_endpoint():
     client = TestClient(app)
     with client.stream(
-        "GET", "/api/scan/stream", params={"repo_path": "sample_repo"}
+        "GET", "/api/scan/stream", params={"repo_path": "sample_repo", "semgrep_enabled": "false"}
     ) as response:
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/event-stream")
