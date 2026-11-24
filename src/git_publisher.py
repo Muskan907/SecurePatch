@@ -793,6 +793,12 @@ def build_pr_body(summary: dict) -> str:
             f"{len(comparison.get('removed') or [])} removed, "
             f"{len(comparison.get('introduced') or [])} introduced"
         )
+    semgrep_counts = summary.get("semgrep") or {}
+    if semgrep_counts:
+        lines.append(
+            f"- Semgrep (patched file): {semgrep_counts['before'].get('total', '?')} before -> "
+            f"{semgrep_counts['after'].get('total', '?')} after"
+        )
     lines += [
         "",
         "_The patch was generated with repository-aware RAG + LLM, checked by "

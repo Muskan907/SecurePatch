@@ -26,10 +26,16 @@ function ruleFor(rules, finding) {
     test_id: id,
     name: rule?.name || (finding?.test_name || id || "").replaceAll("_", " "),
     why: rule?.why || finding?.issue_text,
-    fix: rule?.fix,
     vulnerable: rule?.vulnerable || "",
     fixed: rule?.fixed || "",
-    category: rule?.category_label || "Other",
+    category:
+      rule?.category_label ||
+      (finding?.source === "semgrep" ? "Semgrep rule" : "Other"),
+    fix:
+      rule?.fix ||
+      (finding?.source === "semgrep"
+        ? "Follow the Semgrep rule guidance linked below; the AI patch applies it to your function."
+        : undefined),
     cwe,
     cwe_url: cwe
       ? `https://cwe.mitre.org/data/definitions/${cwe}.html`
@@ -121,6 +127,7 @@ export function RuleExplainer({ finding, compact = false }) {
       {open && (
         <div className="bg-explainer-body">
           <div className="bg-tags">
+            <SourceTag finding={finding} />
             <span className="bg-tag">{rule.category}</span>
             {rule.cwe && (
               <a
@@ -258,15 +265,37 @@ function FindingRow({ item, kind }) {
   );
 }
 
-export function BanditComparison({ comparison }) {
+export function SourceTag({ finding }) {
+  if (finding?.source === "semgrep") {
+    return (
+      <span className="src-tag semgrep" title="Found only by Semgrep (data-flow rules)">
+        SEMGREP
+      </span>
+    );
+  }
+  if (finding?.confirmed_by?.includes("semgrep")) {
+    return (
+      <span className="src-tag both" title="Bandit and Semgrep both report this: high confidence">
+        BANDIT + SEMGREP
+      </span>
+    );
+  }
+  return <span className="src-tag bandit">BANDIT</span>;
+}
+
+export function BanditComparison({
+  comparison,
+  kicker = "BANDIT RE-SCAN",
+  title = "Findings before vs after the patch",
+}) {
   if (!comparison) return null;
   const { before, after, removed = [], introduced = [] } = comparison;
   return (
     <div className="panel bg-comparison">
       <div className="panel-head">
         <div>
-          <div className="section-kicker">BANDIT RE-SCAN</div>
-          <h3>Findings before vs after the patch</h3>
+          <div className="section-kicker">{kicker}</div>
+          <h3>{title}</h3>
         </div>
       </div>
       <div className="bg-counts">
@@ -354,6 +383,16 @@ export function BanditGuide({ findings = [], scanMeta }) {
           such as <code>subprocess(..., shell=True)</code>. A match is a{" "}
           <b>finding</b> with a <b>severity</b> (how bad) and a{" "}
           <b>confidence</b> (how sure), mapped to a <b>CWE</b> weakness ID.
+        </p>
+        <p className="bg-intro">
+          <b>Semgrep</b> runs in parallel as a second engine. Besides
+          patterns, its rules follow <b>data flow</b>: they notice when
+          request data reaches an SQL string or <code>render_template_string</code>,
+          which Bandit cannot see. Each finding is tagged{" "}
+          <span className="src-tag bandit">BANDIT</span>{" "}
+          <span className="src-tag semgrep">SEMGREP</span> or{" "}
+          <span className="src-tag both">BANDIT + SEMGREP</span>. When both
+          tools agree, the finding is almost certainly real.
         </p>
 
         <div className="bg-matrix">

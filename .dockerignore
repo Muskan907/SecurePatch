@@ -20,3 +20,4 @@ frontend
 *.backup
 bandit-report.json
 benchmark_bandit.json
+.tools

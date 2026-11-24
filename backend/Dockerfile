@@ -20,9 +20,18 @@ COPY requirements.txt .
 RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
     && pip install -r requirements.txt
 
+# Semgrep in its own venv: it pins libraries that conflict with ChromaDB.
+RUN python -m venv /opt/semgrep \
+    && /opt/semgrep/bin/pip install semgrep==1.186.0
+
 COPY backend/ backend/
 COPY src/ src/
 COPY sample_repo/ sample_repo/
+
+# Bake the Python security rules into the image (offline scans).
+ENV SEMGREP_BIN=/opt/semgrep/bin/semgrep \
+    SEMGREP_RULES=/opt/semgrep/python-rules.yml
+RUN python -c "from pathlib import Path; from src.semgrep_scanner import build_rules; build_rules(Path('/opt/semgrep/python-rules.yml'))"
 
 RUN useradd --create-home --uid 10001 app \
     && mkdir -p workspace \

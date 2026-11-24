@@ -41,6 +41,7 @@ import {
   BanditGuide,
   RuleExplainer,
   ScanTerminal,
+  SourceTag,
 } from "./BanditGuide";
 import { RepoPresets } from "./RepoFinder";
 import { API } from "./api";
@@ -508,6 +509,22 @@ function App() {
               f.severity.toLowerCase()
             )
           );
+        } else if (event.type === "semgrep") {
+          if (event.status === "done") {
+            log(
+              `[semgrep] ${event.count} finding(s): ${event.confirmed} confirm Bandit, ` +
+                `${event.new} new that Bandit missed`,
+              "done"
+            );
+            event.findings.forEach((f) =>
+              log(
+                `      ${f.test_id} ${f.severity.padEnd(6)} ${f.file}:${f.line}: ${f.text}`,
+                f.severity.toLowerCase()
+              )
+            );
+          } else {
+            log(`[semgrep] ${event.message}`, event.status === "failed" ? "warn" : "dim");
+          }
         } else if (event.type === "done") {
           finished = true;
           source.close();
@@ -1874,6 +1891,8 @@ function Overview({
                             finding.issue_severity
                           }
                         </span>
+
+                        <SourceTag finding={finding} />
 
                       </div>
 
@@ -3867,6 +3886,14 @@ function ValidationView({
       {validation?.comparison && (
         <BanditComparison
           comparison={validation.comparison}
+        />
+      )}
+
+      {validation?.semgrep_check?.available && (
+        <BanditComparison
+          comparison={validation.semgrep_check.comparison}
+          kicker="SEMGREP RE-SCAN"
+          title={`Semgrep findings in ${validation.semgrep_check.file}, before vs after`}
         />
       )}
 
