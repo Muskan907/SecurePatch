@@ -60,11 +60,75 @@ jobs:
             "import json,sys; d=json.load(sys.stdin); print(d['summary']); assert d['summary']['total']>0"
 
   # -------------------------------------------------------
+  # Deploy the real manifests to a throwaway Kubernetes
+  # cluster (kind) and check the app answers inside it
+  # -------------------------------------------------------
+  k8s-test:
+    name: Kubernetes deploy test (kind)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build backend image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          load: true
+          tags: securepatch-backend:local
+          cache-from: type=gha,scope=backend
+
+      - name: Build frontend image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          load: true
+          tags: securepatch-frontend:local
+          cache-from: type=gha,scope=frontend
+
+      - name: Create kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: securepatch
+
+      - name: Load images into the cluster
+        run: |
+          kind load docker-image securepatch-backend:local --name securepatch
+          kind load docker-image securepatch-frontend:local --name securepatch
+
+      - name: Deploy (CI overlay)
+        run: kubectl apply -k k8s/overlays/ci
+
+      - name: Wait for rollouts
+        run: |
+          kubectl -n securepatch rollout status deployment/frontend --timeout=5m
+          kubectl -n securepatch rollout status deployment/backend --timeout=15m
+
+      - name: Health check and sample scan inside the cluster
+        run: |
+          kubectl -n securepatch port-forward svc/backend 8000:8000 &
+          sleep 5
+          curl -fs http://localhost:8000/api/health; echo
+          curl -fs -X POST http://localhost:8000/api/scan \
+            -H "Content-Type: application/json" \
+            -d '{"repo_path":"sample_repo","semgrep":false}' | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d['summary']); assert d['summary']['total']>0"
+
+      - name: Debug output on failure
+        if: failure()
+        run: |
+          kubectl -n securepatch get all,pvc
+          kubectl -n securepatch describe pods
+          kubectl -n securepatch logs deployment/backend --tail=200 || true
+
+  # -------------------------------------------------------
   # Build and push all images to GitHub Container Registry
   # -------------------------------------------------------
   images:
     name: Build & push ${{ matrix.name }}
-    needs: smoke-test
+    needs: [smoke-test, k8s-test]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:

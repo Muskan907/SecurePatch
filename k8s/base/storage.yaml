@@ -1,0 +1,33 @@
+# Persistent volumes: data survives pod restarts and upgrades.
+# No storageClassName = the cluster default (hostpath on Docker Desktop).
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-models
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 20Gi
+---
+# Imported repositories, scan cache, ChromaDB (RAG) store.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-workspace
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Sentence-transformers embedding model cache.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: backend-hf-cache
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 2Gi

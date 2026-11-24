@@ -12,6 +12,7 @@ SecurePatch is an AI-assisted security vulnerability detection and automated pat
 | Local backend | `.\venv\Scripts\python.exe -m uvicorn backend.main:app --reload --port 8000` |
 | Local frontend | `cd frontend && npm run dev` → http://localhost:5173 |
 | Full stack in Docker | `docker compose up -d --build` → http://localhost:8080 |
+| Kubernetes (Docker Desktop) | `kubectl apply -k k8s/base` → http://localhost:8080 (see [docs/devops.md](docs/devops.md#9-kubernetes)) |
 
 ## Features at a glance
 
