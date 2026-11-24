@@ -63,14 +63,16 @@ git tag v1.0.0 && git push origin v1.0.0
 | `backend/Dockerfile` | Python 3.11 slim, CPU-only PyTorch, non-root user, health check |
 | `frontend/Dockerfile` | Vite build → nginx with SPA routing and security headers; `VITE_API_URL` build arg |
 | `sandbox/Dockerfile` | Minimal, non-root pytest runner with common web test dependencies |
-| `docker-compose.yml` | Local stack: Ollama + backend + frontend (+ `setup` profile: model pull, sandbox image) |
+| `docker-compose.yml` | Local stack: backend + frontend, using the Ollama already installed on the computer (`host.docker.internal`). `ollama` profile: run Ollama in Docker instead. `setup` profile: model pull, sandbox image |
 | `docker-compose.prod.yml` | Same stack from the published GHCR images |
 
 Run the whole stack:
 
 ```bash
 docker compose up -d --build
-docker compose --profile setup run --rm model-pull     # first time: download qwen2.5-coder:7b
+# Uses the Ollama on this computer. Ollama inside Docker instead:
+#   OLLAMA_BASE_URL=http://ollama:11434 docker compose --profile ollama up -d --build
+#   docker compose --profile ollama --profile setup run --rm model-pull
 # Frontend http://localhost:8080 · API docs http://localhost:8000/docs
 ```
 

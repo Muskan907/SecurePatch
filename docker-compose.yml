@@ -1,7 +1,13 @@
 # SecurePatch full stack: frontend + backend + local LLM (Ollama).
 #
-#   docker compose up -d --build        # start everything
-#   docker compose --profile setup run --rm model-pull   # download the LLM once
+#   docker compose up -d --build
+#
+# By default the backend uses the Ollama already running on this computer
+# (host.docker.internal:11434), so models are not downloaded twice.
+# To run Ollama inside Docker instead (needs ~10 GB extra disk):
+#   $env:OLLAMA_BASE_URL="http://ollama:11434"      # PowerShell
+#   docker compose --profile ollama up -d --build
+#   docker compose --profile ollama --profile setup run --rm model-pull
 #
 # Frontend: http://localhost:8080    Backend: http://localhost:8000/docs
 name: securepatch
@@ -9,6 +15,7 @@ name: securepatch
 services:
   ollama:
     image: ollama/ollama:0.40.17
+    profiles: ["ollama"]
     volumes:
       - ollama-models:/root/.ollama
     ports:
@@ -26,7 +33,7 @@ services:
       dockerfile: backend/Dockerfile
     image: securepatch-backend:local
     environment:
-      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
       ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
       # The backend container is the isolation boundary for test runs.
       SANDBOX_MODE: local
@@ -35,9 +42,13 @@ services:
       - hf-cache:/home/app/.cache/huggingface
     ports:
       - "8000:8000"
+    # Lets the container reach Ollama on the host (automatic on Docker Desktop).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       ollama:
         condition: service_started
+        required: false   # only when the "ollama" profile is enabled
     restart: unless-stopped
 
   frontend:
