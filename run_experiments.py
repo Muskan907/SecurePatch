@@ -22,6 +22,7 @@ import argparse
 import ast
 import json
 import platform
+import re
 import subprocess
 import sys
 import time
@@ -194,12 +195,55 @@ def rule_patch(repo: Path, file: str, rule: str, line: int) -> str | None:
     original_fn = function_at(source, line)
     if original_fn is None:
         return None
-    # Apply the regex rules to the vulnerable function only (not the first
-    # match anywhere in the file), the same unit the LLM methods repair.
-    patched_fn, generated = generate_rule_patch(rule, original_fn)
+    # Apply the rules to the vulnerable function only (not the first match
+    # anywhere in the file), the same unit the LLM methods repair.
+    if rule == "B307":
+        # Token-aware: rewrite real eval(...) calls only, never a function
+        # name such as vulnerable_eval( or text inside strings/comments.
+        patched_fn, generated = _replace_eval_calls(original_fn)
+    else:
+        patched_fn, generated = generate_rule_patch(rule, original_fn)
     if not generated or patched_fn.strip() == original_fn.strip():
         return None
+    # A real rule-based fixer adds the import its replacement needs.
+    needed = RULE_IMPORTS.get(rule)
+    if needed and not re.search(rf"^\s*import\s+{needed}\b", source, re.M):
+        patched_fn = _insert_import(patched_fn, f"import {needed}")
     return patched_fn
+
+
+RULE_IMPORTS = {"B307": "ast", "B108": "tempfile"}
+
+
+def _replace_eval_calls(code: str) -> tuple[str, bool]:
+    import io
+    import tokenize
+
+    tokens = list(tokenize.generate_tokens(io.StringIO(code).readline))
+    lines = code.split("\n")
+    hits = []
+    for i, tok in enumerate(tokens):
+        if tok.type != tokenize.NAME or tok.string != "eval":
+            continue
+        prev = tokens[i - 1].string if i else ""
+        nxt = tokens[i + 1].string if i + 1 < len(tokens) else ""
+        if nxt == "(" and prev not in (".", "def"):
+            hits.append(tok.start)
+    for row, col in reversed(hits):  # right-to-left keeps columns valid
+        text = lines[row - 1]
+        lines[row - 1] = text[:col] + "ast.literal_eval" + text[col + len("eval"):]
+    return "\n".join(lines), bool(hits)
+
+
+def _insert_import(code: str, statement: str) -> str:
+    tree = ast.parse(code)
+    fn = next(n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)))
+    first = fn.body[0]
+    is_doc = isinstance(first, ast.Expr) and isinstance(getattr(first, "value", None), ast.Constant) \
+        and isinstance(first.value.value, str)
+    at = first.end_lineno if is_doc else first.lineno - 1
+    lines = code.split("\n")
+    return "\n".join(lines[:at] + [" " * first.col_offset + statement] + lines[at:])
 
 
 def collect_environment(session: requests.Session) -> dict:
