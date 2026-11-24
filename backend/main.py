@@ -2691,7 +2691,7 @@ STRICT SECURITY REQUIREMENTS
 4. Do not modify tests.
 5. Do not modify unrelated code.
 6. Do not introduce new vulnerabilities.
-7. Do not invent imports or variables.
+7. Do not invent variables. Use only names that are imported or defined in the file; if the fix needs another module (e.g. secrets, tempfile, shlex), import it INSIDE the function body.
 8. Keep the existing function signature unless a signature change is required for security.
 9. Return ONLY the complete corrected Python function.
 10. Return plain Python code, with no markdown fences and no explanation.
