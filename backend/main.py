@@ -1850,6 +1850,7 @@ def generate_patch(request: PatchRequest):
         allowed=request.fallback_models,
         seed=request.seed,
         temperature=request.temperature,
+        module_source=file_path.read_text(encoding="utf-8", errors="replace"),
     )
     patch = {
         "attempts": attempts,
@@ -2366,6 +2367,7 @@ def generate_with_fallback(
     allowed: list[str] | None = None,
     seed: int | None = None,
     temperature: float | None = None,
+    module_source: str | None = None,
 ):
     """Try the requested model, then lighter installed models.
 
@@ -2399,6 +2401,7 @@ def generate_with_fallback(
             print(llm_result.text)
             print("=" * 80 + "\n")
             repaired = normalize_function_output(llm_result.text, function_name)
+            repaired = carry_over_imports(llm_result.text, repaired, module_source or "")
             validate_patch_guardrails(repaired, function_name)
             attempts.append({"model": model_key, "ok": True, "error": None})
             return llm_result, repaired, attempts
@@ -2412,6 +2415,70 @@ def generate_with_fallback(
         status_code=502,
         detail=f"LLM generation failed for all models. {summary}",
     )
+
+
+IMPORT_LINE = re.compile(r"^(import\s+[\w.]+(\s+as\s+\w+)?(\s*,\s*[\w.]+(\s+as\s+\w+)?)*"
+                         r"|from\s+[\w.]+\s+import\s+[\w*, ()]+?(\s+as\s+\w+)?)\s*$")
+
+
+def carry_over_imports(llm_text: str, function_code: str, module_source: str) -> str:
+    """Keep the imports a model wrote ABOVE the repaired function.
+
+    Only the function is patched into the file, so top-level imports in the
+    model output would be lost and a correct fix (e.g. ``secrets.token_urlsafe``)
+    would fail with a missing name. Imports whose names the function uses and
+    the module does not already define are moved to the top of the function
+    body. Returns the function unchanged when nothing needs to be added.
+    """
+    try:
+        fn_tree = ast.parse(textwrap.dedent(function_code))
+    except SyntaxError:
+        return function_code
+    fn = next((n for n in fn_tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))), None)
+    if fn is None or not fn.body:
+        return function_code
+
+    used = {n.id for n in ast.walk(fn) if isinstance(n, ast.Name)}
+    already = set()
+    try:
+        for node in ast.parse(module_source).body:
+            if isinstance(node, (ast.Import, ast.ImportFrom)):
+                already |= {(a.asname or a.name).split(".")[0] for a in node.names}
+            elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                already.add(node.name)
+            elif isinstance(node, ast.Assign):
+                already |= {t.id for t in node.targets if isinstance(t, ast.Name)}
+    except SyntaxError:
+        pass
+    for node in ast.walk(fn):  # imports the model already put inside
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            already |= {(a.asname or a.name).split(".")[0] for a in node.names}
+
+    needed = []
+    for raw in str(llm_text).replace("\r\n", "\n").split("\n"):
+        line = raw.strip()
+        if raw[:1].isspace() or not IMPORT_LINE.match(line):
+            continue
+        try:
+            node = ast.parse(line).body[0]
+        except (SyntaxError, IndexError):
+            continue
+        names = {(a.asname or a.name).split(".")[0] for a in node.names}
+        if names & used and not names <= already and line not in needed:
+            needed.append(line)
+            already |= names
+    if not needed:
+        return function_code
+
+    lines = textwrap.dedent(function_code).split("\n")
+    first = fn.body[0]
+    if first.lineno == fn.lineno:  # one-line function: leave it alone
+        return function_code
+    has_doc = (isinstance(first, ast.Expr) and isinstance(getattr(first, "value", None), ast.Constant)
+               and isinstance(first.value.value, str))
+    insert_at = (first.end_lineno if has_doc else first.lineno - 1)
+    indent = " " * first.col_offset
+    return "\n".join(lines[:insert_at] + [indent + imp for imp in needed] + lines[insert_at:])
 
 
 def normalize_function_output(text: str, function_name: str) -> str:
