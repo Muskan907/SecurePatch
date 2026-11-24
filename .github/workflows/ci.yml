@@ -60,14 +60,16 @@ jobs:
   # Security: SAST on our own code + dependency audit
   # -------------------------------------------------------
   security:
-    name: Security · Bandit & dependencies
+    name: Security · Bandit, Semgrep, secrets & dependencies
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
       security-events: write   # upload SARIF to GitHub code scanning
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # full history so gitleaks can scan past commits
 
       - uses: actions/setup-python@v5
         with:
@@ -89,6 +91,26 @@ jobs:
       - name: Security gate - fail on HIGH severity findings
         run: bandit -r backend src -lll
 
+      - name: Semgrep (data-flow SAST) - fail on ERROR findings
+        run: |
+          pipx install semgrep==1.186.0
+          semgrep scan --config p/python --config p/flask \
+            --metrics=off --severity ERROR --error \
+            --sarif --output semgrep.sarif backend src
+
+      - name: Upload Semgrep SARIF
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+      - name: Gitleaks (secret scan)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Dependency vulnerability audit
         continue-on-error: true   # report only; pinned deps are bumped by Dependabot
         run: pip-audit -r requirements.txt --format markdown --output pip-audit.md --progress-spinner off
@@ -102,6 +124,7 @@ jobs:
           name: security-reports
           path: |
             bandit.sarif
+            semgrep.sarif
             pip-audit.md
             sample-repo-bandit.json
 
