@@ -1100,6 +1100,51 @@ def function_span(file_path: Path, name: str):
     return None
 
 
+def undefined_names(file_path: Path, function_name: str) -> list[str]:
+    """Global names the patched function uses that the module never defines.
+
+    Catches patches that call e.g. ``token_urlsafe`` or ``shlex.quote``
+    without the import: the file still parses, Bandit is satisfied and tests
+    that never call the function pass, but it would crash at runtime.
+    """
+    import builtins
+    import symtable
+
+    try:
+        code = file_path.read_text(encoding="utf-8", errors="replace")
+        module = symtable.symtable(code, str(file_path), "exec")
+    except (OSError, SyntaxError, ValueError):
+        return []
+    defined = {s.get_name() for s in module.get_symbols() if s.is_assigned() or s.is_imported()}
+    defined |= set(dir(builtins)) | {"__file__", "__name__", "__doc__", "__builtins__"}
+    # Star imports make every name potentially defined: do not guess.
+    if "*" in code and re.search(r"^\s*from\s+\S+\s+import\s+\*", code, re.M):
+        return []
+
+    def find(table):
+        for child in table.get_children():
+            if child.get_type() == "function" and child.get_name() == function_name:
+                return child
+            found = find(child)
+            if found is not None:
+                return found
+        return None
+
+    def referenced_globals(table):
+        names = set()
+        for sym in table.get_symbols():
+            if sym.is_referenced() and (sym.is_global() or sym.is_free()) and not sym.is_assigned():
+                names.add(sym.get_name())
+        for child in table.get_children():
+            names |= referenced_globals(child)
+        return names
+
+    target = find(module)
+    if target is None:
+        return []
+    return sorted(name for name in referenced_globals(target) if name not in defined)
+
+
 def run_semgrep_file_check(
     original_file: Path,
     patched_file: Path,
@@ -1939,6 +1984,41 @@ def validate(request: ValidateRequest):
             },
             "patch": {
                 "applied": False,
+            },
+            "sandbox": {
+                "path": str(sandbox),
+            },
+        }
+    # Guardrail: the patched function must not use names the module never
+    # defines (typically a missing import). Such a patch would crash at
+    # runtime even if Bandit is satisfied and no test calls the function.
+    missing = undefined_names(Path(target), function.get("name") or "")
+    if missing:
+        LAST_VALIDATION_STATUS = "REJECTED"
+        message = (
+            "Guardrail: patched function uses undefined names "
+            f"{', '.join(missing)} (missing import?)"
+        )
+        return {
+            "status": "REJECTED",
+            "reason": message,
+            "undefined_names": missing,
+            "regression": {
+                "passed": False,
+                "passed_count": 0,
+                "failed_count": 0,
+                "error_count": 0,
+                "output": "",
+            },
+            "security": {
+                "passed": False,
+                "target_removed": False,
+                "findings_after": 0,
+                "target_findings": [],
+                "output": message,
+            },
+            "patch": {
+                "applied": True,
             },
             "sandbox": {
                 "path": str(sandbox),
