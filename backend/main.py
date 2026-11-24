@@ -23,7 +23,7 @@ try:
 except Exception:
     pass
 from src.llm_adapter import (
-    generate as generate_llm,
+    generate as _generate_llm_raw,
     configured_models,
     fallback_chain,
     MODEL_REGISTRY,
@@ -45,6 +45,18 @@ from src.git_publisher import (
     publish as publish_to_remote,
     resolve_mode,
 )
+import src.metrics as metrics
+
+
+def generate_llm(prompt, model="qwen2.5-coder", **kwargs):
+    """Ollama generation, timed for the /metrics endpoint."""
+    started = time.perf_counter()
+    result = None
+    try:
+        result = _generate_llm_raw(prompt, model=model, **kwargs)
+        return result
+    finally:
+        metrics.record_llm_call(model, time.perf_counter() - started, result)
 
 # =========================================================
 # APP
@@ -75,6 +87,16 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(metrics.PrometheusMiddleware)
+# Cached so a Prometheus scrape every few seconds does not hammer Ollama.
+metrics.OLLAMA_UP._supplier = metrics.cached_probe(lambda: ollama_is_available())
+
+
+@app.get("/metrics", include_in_schema=False)
+def prometheus_metrics():
+    """Prometheus scrape endpoint used by the live Grafana dashboard."""
+    from fastapi.responses import Response
+    return Response(metrics.render_all(), media_type=metrics.CONTENT_TYPE)
 
 # =========================================================
 # PATHS / STATE
@@ -1532,6 +1554,7 @@ def scan(request: ScanRequest):
             semgrep_info.update(count=len(sg["findings"]), errors=sg["errors"])
         except semgrep.SemgrepUnavailable as exc:
             semgrep_info["error"] = str(exc)
+    metrics.record_scan(findings)
     return {
         "summary": finding_summary(findings),
         "findings": findings,
@@ -1625,6 +1648,7 @@ def scan_stream(repo_path: str, semgrep_enabled: bool = True):
                 except Exception as exc:
                     yield sse({"type": "semgrep", "status": "failed", "message": str(exc)})
             done["findings"] = findings
+            metrics.record_scan(findings)
             done["summary"] = finding_summary(findings)
             done["bandit_version"] = bandit_version()
             yield sse(done)
@@ -1893,6 +1917,17 @@ def generate_patch(request: PatchRequest):
 
 @app.post("/api/validate")
 def validate(request: ValidateRequest):
+    verdict = "ERROR"
+    try:
+        result = _validate(request)
+        if isinstance(result, dict):
+            verdict = result.get("status") or "UNKNOWN"
+        return result
+    finally:
+        metrics.record_validation(verdict)
+
+
+def _validate(request: ValidateRequest):
     global LAST_VALIDATION_STATUS
     LAST_VALIDATION_STATUS = None
     # Remove any previous verification so a new validation must
@@ -2404,9 +2439,13 @@ def generate_with_fallback(
             repaired = carry_over_imports(llm_result.text, repaired, module_source or "")
             validate_patch_guardrails(repaired, function_name)
             attempts.append({"model": model_key, "ok": True, "error": None})
+            metrics.record_patch_attempt(model_key, None)
+            if len(attempts) > 1:
+                metrics.FALLBACKS.inc()
             return llm_result, repaired, attempts
         except Exception as exc:
             attempts.append({"model": model_key, "ok": False, "error": str(exc)})
+            metrics.record_patch_attempt(model_key, str(exc))
             # Ollama unreachable: other models will fail the same way.
             if "Could not connect to Ollama" in str(exc):
                 break

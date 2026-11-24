@@ -1,0 +1,20 @@
+# Prometheus config for the SecurePatch live dashboard.
+# Started by:  docker compose --profile monitoring up -d
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  - job_name: securepatch-backend
+    metrics_path: /metrics
+    static_configs:
+      # Backend running in Docker Compose (service name "backend").
+      - targets: ["backend:8000"]
+        labels:
+          deployment: compose
+      # Backend running directly on this computer (uvicorn on port 8000):
+      # Prometheus in Docker reaches the host through host.docker.internal.
+      # Whichever target is down simply shows as "down" in Prometheus.
+      - targets: ["host.docker.internal:8000"]
+        labels:
+          deployment: host
