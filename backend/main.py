@@ -122,6 +122,7 @@ class PatchRequest(BaseModel):
     fallback_models: list[str] | None = None   # restrict the fallback chain
     seed: int | None = None          # reproducible sampling
     temperature: float | None = None # override the model default
+    rag_top_k: int | None = None     # retrieved chunks (default RAG_TOP_K)
 
 
 class ValidateRequest(BaseModel):
@@ -1771,14 +1772,15 @@ def generate_patch(request: PatchRequest):
         )
     retrieved = []
     retrieved_context = ""
-    if request.use_rag and request.prompt_mode == "full":
+    top_k = RAG_TOP_K if request.rag_top_k is None else max(0, int(request.rag_top_k))
+    if request.use_rag and request.prompt_mode == "full" and top_k > 0:
         try:
             rag = get_rag(repo)
             rag_query = finding_query(finding, function.get("code", ""))
-            retrieved = rag.query(rag_query, RAG_TOP_K, repo=repo)
+            retrieved = rag.query(rag_query, top_k, repo=repo)
             if not retrieved:
                 rag.index(repo)
-                retrieved = rag.query(rag_query, RAG_TOP_K, repo=repo)
+                retrieved = rag.query(rag_query, top_k, repo=repo)
             retrieved_context = format_context(retrieved)
         except Exception as exc:
             raise HTTPException(
@@ -1814,6 +1816,7 @@ def generate_patch(request: PatchRequest):
             "seed": request.seed,
             "temperature": request.temperature,
             "rag_chunks": len(retrieved),
+            "rag_top_k": top_k if request.use_rag and request.prompt_mode == "full" else 0,
             "prompt_chars": len(enriched_prompt),
         },
         "provider": llm_result.provider,

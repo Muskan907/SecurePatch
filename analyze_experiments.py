@@ -245,7 +245,7 @@ def main():
             md += [f"## Results on {ds} ({DATASETS[ds]['name']})", "", results_table(ds, exps, summaries), ""]
 
     # ---- Ablation -------------------------------------------------------
-    abl = [e for e in ("llama_full", "ablation_no_rag", "plain_llm_d1", "qwen_full", "fallback_full") if e in summaries]
+    abl = [e for e in ("llama_full", "topk_3", "ablation_no_rag", "plain_llm_d1", "qwen_full", "fallback_full") if e in summaries]
     if abl:
         md += ["## Ablation study (D1)", "", results_table("D1", abl, summaries), "",
                "- *without RAG*: retrieved repository context removed, everything else unchanged.",
@@ -263,6 +263,15 @@ def main():
         md += ["### Ablation: removing the security re-scan from validation", "",
                md_table(["Method", "Accepted without re-scan (%)", "Accepted with re-scan = Verified (%)",
                          "Insecure patches wrongly accepted without re-scan (%)"], rows_rescan), ""]
+
+    # ---- Trend: number of RAG chunks ------------------------------------
+    trend = [(k, e) for k, e in ((0, "ablation_no_rag"), (3, "topk_3"), (6, "llama_full")) if e in summaries]
+    if len(trend) >= 2:
+        md += ["## Trend: number of retrieved RAG chunks k (Llama 3.1 8B, D1)", "", md_table(
+            ["k (chunks)", "Verified (%)", "Vulnerability removed (%)", "Tests pass (%)", "Gen. time (s)"],
+            [[k, fmt(*summaries[e]["verified"]), fmt(*summaries[e]["vulnerability_removed"]),
+              fmt(*summaries[e]["regression_passed"]), fmt(*summaries[e]["generation_seconds"])] for k, e in trend]),
+            "", "k = 0 is the *without RAG* ablation and k = 6 is the default configuration.", ""]
 
     # ---- Per-vulnerability ----------------------------------------------
     d1_exps = [e for e in present if EXPERIMENTS[e]["dataset"] == "D1"]
@@ -469,6 +478,24 @@ def main():
         fig.tight_layout()
         fig.savefig(OUT / "fig7_judge.png")
         figs.append("fig7_judge.png")
+        plt.close(fig)
+
+    if len(trend) >= 2:
+        fig, ax = plt.subplots(figsize=(5.5, 3.8))
+        ks = [k for k, _ in trend]
+        for key, label, color in (("verified", "Verified", COLORS[0]),
+                                  ("vulnerability_removed", "Vulnerability removed", COLORS[1])):
+            ax.errorbar(ks, [summaries[e][key][0] for _, e in trend], yerr=[summaries[e][key][1] for _, e in trend],
+                        marker="o", capsize=4, label=label, color=color)
+        ax.set_xticks(ks)
+        ax.set_xlabel("Retrieved RAG chunks k")
+        ax.set_ylabel("Rate (%)")
+        ax.set_ylim(0, 105)
+        ax.legend(fontsize=8)
+        ax.set_title("Fig. 8  Effect of RAG context size (Llama 3.1 8B, D1)")
+        fig.tight_layout()
+        fig.savefig(OUT / "fig8_topk_trend.png")
+        figs.append("fig8_topk_trend.png")
         plt.close(fig)
 
     md += ["## Figures", ""] + [f"![{f}]({f})" for f in figs] + [""]
