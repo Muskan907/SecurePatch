@@ -91,6 +91,7 @@ REPOSITORY_ROOT.mkdir(parents=True, exist_ok=True)
 # Local demo state. For a multi-user deployment this should become
 # per-repository/per-validation state instead of a global variable.
 LAST_VALIDATION_STATUS = None
+PYTEST_TIMEOUT_SECONDS = 180
 
 # =========================================================
 # REQUEST MODELS
@@ -114,6 +115,13 @@ class PatchRequest(BaseModel):
     file_path: str
     line: int
     model: str | None = None
+    # Experiment / ablation switches. Defaults = the normal UI behaviour.
+    use_rag: bool = True             # retrieved repository context in prompt
+    prompt_mode: str = "full"        # "full" (RAG + graph + AST) or "plain"
+    fallback: bool = True            # try other models when one fails
+    fallback_models: list[str] | None = None   # restrict the fallback chain
+    seed: int | None = None          # reproducible sampling
+    temperature: float | None = None # override the model default
 
 
 class ValidateRequest(BaseModel):
@@ -971,7 +979,7 @@ def _run_pytest(sandbox: Path, command: list[str]):
             errors="replace",
             env=env,
             creationflags=creationflags,
-            timeout=180,
+            timeout=PYTEST_TIMEOUT_SECONDS,
         )
 
         output = (result.stdout + "\n" + result.stderr).strip()
@@ -1714,34 +1722,58 @@ def generate_patch(request: PatchRequest):
         "related_tests",
         [],
     )
-    try:
-        rag = get_rag(repo)
-        rag_query = finding_query(finding, function.get("code", ""))
-        retrieved = rag.query(rag_query, 6, repo=repo)
-        if not retrieved:
-            rag.index(repo)
-            retrieved = rag.query(rag_query, 6, repo=repo)
-        retrieved_context = format_context(retrieved)
-    except Exception as exc:
+    if request.prompt_mode not in ("full", "plain"):
         raise HTTPException(
-            status_code=500,
-            detail=f"Repository context retrieval failed: {exc}",
+            status_code=400,
+            detail="prompt_mode must be 'full' or 'plain'.",
         )
-    enriched_prompt = build_ai_repair_prompt(
-        finding=finding,
-        analysis=analysis,
-        graph=graph,
-        impact=impact,
-        retrieved_context=retrieved_context,
-    )
+    retrieved = []
+    retrieved_context = ""
+    if request.use_rag and request.prompt_mode == "full":
+        try:
+            rag = get_rag(repo)
+            rag_query = finding_query(finding, function.get("code", ""))
+            retrieved = rag.query(rag_query, RAG_TOP_K, repo=repo)
+            if not retrieved:
+                rag.index(repo)
+                retrieved = rag.query(rag_query, RAG_TOP_K, repo=repo)
+            retrieved_context = format_context(retrieved)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Repository context retrieval failed: {exc}",
+            )
+    if request.prompt_mode == "plain":
+        enriched_prompt = build_plain_repair_prompt(finding, function)
+    else:
+        enriched_prompt = build_ai_repair_prompt(
+            finding=finding,
+            analysis=analysis,
+            graph=graph,
+            impact=impact,
+            retrieved_context=retrieved_context,
+        )
     llm_result, repaired_function, attempts = generate_with_fallback(
         enriched_prompt,
         request.model or "qwen2.5-coder",
         function["name"],
+        fallback=request.fallback,
+        allowed=request.fallback_models,
+        seed=request.seed,
+        temperature=request.temperature,
     )
     patch = {
         "attempts": attempts,
         "fallback_used": len(attempts) > 1,
+        "settings": {
+            "use_rag": request.use_rag and request.prompt_mode == "full",
+            "prompt_mode": request.prompt_mode,
+            "fallback": request.fallback,
+            "seed": request.seed,
+            "temperature": request.temperature,
+            "rag_chunks": len(retrieved),
+            "prompt_chars": len(enriched_prompt),
+        },
         "provider": llm_result.provider,
         "model": llm_result.model,
         "latency_ms": llm_result.latency_ms,
@@ -2117,6 +2149,7 @@ def health():
 # AI / RAG MID-SEM FEATURES
 
 # =========================================================
+RAG_TOP_K = 6  # retrieved chunks per repair prompt
 RAG_ROOT = PROJECT_ROOT / "workspace" / "rag_chroma"
 GENERATED_TEST_ROOT = PROJECT_ROOT / "workspace" / "generated_tests"
 RAG_ROOT.mkdir(parents=True, exist_ok=True)
@@ -2197,21 +2230,42 @@ def validate_patch_guardrails(patch: str, expected_function: str) -> None:
                         "Guardrail blocked: subprocess shell=True."
                     )
 
-def generate_with_fallback(prompt: str, model: str, function_name: str):
+def generate_with_fallback(
+    prompt: str,
+    model: str,
+    function_name: str,
+    *,
+    fallback: bool = True,
+    allowed: list[str] | None = None,
+    seed: int | None = None,
+    temperature: float | None = None,
+):
     """Try the requested model, then lighter installed models.
 
     A model "fails" when Ollama errors (500 / crash / timeout), or when its
     output is not the expected function or is blocked by the guardrails.
+    ``fallback=False`` uses only the requested model (fair per-model
+    benchmarks); ``allowed`` restricts which models the chain may use.
     Returns (llm_result, repaired_function, attempts).
     """
-    chain = fallback_chain(
-        model,
-        installed_models() if ollama_is_available() else None,
-    )
+    if fallback:
+        chain = fallback_chain(
+            model,
+            installed_models() if ollama_is_available() else None,
+        )
+        if allowed:
+            chain = [model] + [m for m in chain[1:] if m in allowed]
+    else:
+        chain = [model]
     attempts = []
     for model_key in chain:
         try:
-            llm_result = generate_llm(prompt, model=model_key)
+            llm_result = generate_llm(
+                prompt,
+                model=model_key,
+                seed=seed,
+                temperature=temperature,
+            )
             print("\n" + "=" * 80)
             print(f"RAW LLM RESPONSE ({model_key})")
             print("=" * 80)
@@ -2471,7 +2525,7 @@ def build_ai_repair_prompt(finding, analysis, graph, impact, retrieved_context):
     function = analysis.get("affected_function") or {}
     imports = analysis.get("imports") or []
     callers = impact.get("callers") or impact.get("function_calls") or []
-    related_tests = analysis.get("tests") or []
+    related_tests = analysis.get("related_tests") or analysis.get("tests") or []
     # Order matters: background context first, the task and vulnerable
     # function last. If a local model's context window overflows, the
     # start of the prompt is dropped - never the actual task.
@@ -2518,6 +2572,26 @@ STRICT SECURITY REQUIREMENTS
 """.strip()
 
 
+def build_plain_repair_prompt(finding, function):
+    """Baseline prompt: only the finding and the function.
+
+    No retrieved context, source graph, callers, tests or imports. Used to
+    measure what SecurePatch's context engineering adds over asking an LLM
+    directly.
+    """
+    name = function.get("name", "")
+    return f"""
+Fix this security vulnerability in the Python function below.
+Rule: {finding.get("test_id")}
+Issue: {finding.get("issue_text")}
+
+{function.get("code", "")}
+
+Return ONLY the complete corrected Python function, named exactly `{name}`,
+as plain Python code with no markdown fences and no explanation.
+""".strip()
+
+
 def finding_query(finding, function_code=""):
     return (
         f"security vulnerability {finding.get('test_id')} "
@@ -2559,6 +2633,69 @@ class AICompareRequest(BaseModel):
     file_path: str
     line: int
     models: list[str] | None = None
+
+
+@app.get("/api/experiment/environment")
+def experiment_environment():
+    """Every version and setting an experiment depends on (reproducibility)."""
+    import platform
+    from importlib import metadata
+
+    import src.llm_adapter as llm
+    import src.repository_rag as rag_mod
+
+    def version(dist):
+        try:
+            return metadata.version(dist)
+        except metadata.PackageNotFoundError:
+            return None
+
+    ollama_version = None
+    model_digests = {}
+    try:
+        import requests as _rq
+        ollama_version = _rq.get(f"{llm.OLLAMA_BASE_URL}/api/version", timeout=5).json().get("version")
+        for item in _rq.get(f"{llm.OLLAMA_BASE_URL}/api/tags", timeout=5).json().get("models", []):
+            model_digests[item.get("name")] = {
+                "digest": (item.get("digest") or "")[:12],
+                "size_gb": round((item.get("size") or 0) / 1e9, 2),
+                "quantization": (item.get("details") or {}).get("quantization_level"),
+                "parameters": (item.get("details") or {}).get("parameter_size"),
+            }
+    except Exception:
+        pass
+
+    return {
+        "python": platform.python_version(),
+        "platform": platform.platform(),
+        "processor": platform.processor(),
+        "packages": {
+            name: version(name)
+            for name in (
+                "fastapi", "bandit", "chromadb", "sentence-transformers",
+                "langchain-text-splitters", "langchain-core", "torch",
+                "pytest", "requests",
+            )
+        },
+        "semgrep": semgrep.status(),
+        "ollama_version": ollama_version,
+        "models": {
+            key: {"ollama_name": name, **model_digests.get(name, {})}
+            for key, name in llm.ALL_MODELS.items()
+        },
+        "generation_options": llm.MODEL_OPTIONS,
+        "fallback_order": llm.FALLBACK_ORDER,
+        "rag": {
+            "embedding_model": rag_mod.DEFAULT_EMBEDDING_MODEL,
+            "chunk_size_chars": rag_mod.CHUNK_SIZE,
+            "chunk_overlap_chars": rag_mod.CHUNK_OVERLAP,
+            "top_k": RAG_TOP_K,
+            "max_context_chars": rag_mod.MAX_CONTEXT_CHARS,
+            "max_chunk_chars": rag_mod.MAX_EVIDENCE_CHARS,
+        },
+        "sandbox": sandbox_describe(),
+        "pytest_timeout_seconds": PYTEST_TIMEOUT_SECONDS,
+    }
 
 
 @app.get("/api/ai/status")
