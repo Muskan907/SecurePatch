@@ -93,7 +93,7 @@ STRICT OUTPUT RULES:
 3. Do NOT return markdown fences.
 4. Do NOT explain your answer.
 5. Do NOT return analysis or commentary.
-6. Do NOT return imports outside the function.
+6. Do NOT return imports outside the function. If the fix needs a module or name that the file does not already import, write the import statement INSIDE the function body (first line of the function).
 7. Do NOT return tests.
 8. Do NOT return additional functions.
 9. Do NOT repeat the function.
