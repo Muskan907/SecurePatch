@@ -212,13 +212,23 @@ def run_bandit(repo_path: str):
             "results": [],
             "errors": result.stderr,
         }
+    return parse_bandit_json(result.stdout, result.stderr)
+
+
+def parse_bandit_json(stdout: str, stderr: str = "") -> dict:
+    """Parse Bandit's JSON report.
+
+    On larger repositories Bandit prints a progress bar ("Working... 100%")
+    to stdout before the JSON. Parsing the raw output then fails and every
+    finding would silently disappear, so parse from the first "{".
+    """
+    start = stdout.find("{")
+    if start == -1:
+        return {"results": [], "errors": stderr}
     try:
-        return json.loads(result.stdout)
+        return json.loads(stdout[start:])
     except json.JSONDecodeError:
-        return {
-            "results": [],
-            "errors": result.stderr,
-        }
+        return {"results": [], "errors": stderr or "Bandit returned invalid JSON."}
 
 
 def finding_summary(findings):
@@ -1125,31 +1135,63 @@ def run_semgrep_file_check(
 def run_security_validation(
     sandbox: Path,
     target_rule: str,
+    target_file: Path | None = None,
+    function_name: str | None = None,
 ):
+    """Re-scan the patched sandbox with Bandit.
+
+    The target counts as removed only if the rule no longer fires INSIDE the
+    patched function. The same rule may legitimately appear elsewhere in the
+    repository (e.g. several hardcoded passwords); those are other findings
+    and must not make a correct fix look like a failure.
+    """
     data = run_bandit(str(sandbox))
     findings = data.get(
         "results",
         [],
     )
-    target_findings = [
+    same_rule = [
         finding
         for finding in findings
         if finding.get("test_id") == target_rule
     ]
+    target_findings = same_rule
+    scope = "repository"
+    if target_file is not None:
+        target_resolved = Path(target_file).resolve()
+        span = function_span(target_resolved, function_name) if function_name else None
+
+        def in_scope(finding):
+            try:
+                same_file = Path(finding.get("filename", "")).resolve() == target_resolved
+            except OSError:
+                same_file = False
+            if not same_file:
+                return False
+            if span is None:
+                return True
+            return span[0] <= int(finding.get("line_number") or 0) <= span[1]
+
+        target_findings = [finding for finding in same_rule if in_scope(finding)]
+        scope = f"function {function_name}" if span else "file"
     output_lines = [
         f"Total findings after patch: {len(findings)}",
-        f"Target rule {target_rule}: "
+        f"Target rule {target_rule} in patched {scope}: "
         + (
             "FOUND"
             if target_findings
             else "REMOVED"
         ),
+        "Same rule elsewhere in the repository (not targeted): "
+        f"{len(same_rule) - len(target_findings)}",
     ]
     return {
         "passed": len(target_findings) == 0,
         "target_removed": len(target_findings) == 0,
         "findings_after": len(findings),
         "target_findings": target_findings,
+        "same_rule_elsewhere": len(same_rule) - len(target_findings),
+        "scope": scope,
         "all_findings": findings,
         "output": "\n".join(output_lines),
     }
@@ -1905,6 +1947,8 @@ def validate(request: ValidateRequest):
     security = run_security_validation(
         sandbox,
         finding.get("test_id"),
+        Path(target),
+        function.get("name"),
     )
     semgrep_check = run_semgrep_file_check(
         file_path,

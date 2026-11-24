@@ -63,15 +63,22 @@ DATASETS = {
         ],
     },
     "D2": {
-        "name": "we45/Vulnerable-Flask-App (external)",
-        "repo": "workspace/repositories/we45_Vulnerable-Flask-App_6a4756cd",
-        "source": "https://github.com/we45/Vulnerable-Flask-App commit b6a4f97afd466e83e1f60781494252dec1c37039; no unit tests",
+        "name": "OWASP PyGoat (external)",
+        "repo": "workspace/repositories/OWASP_pygoat_2aa4cc14",
+        "source": ("https://github.com/adeyosemanputra/pygoat (OWASP project) commit "
+                   "2aa4cc14f251e4a780e94e200aed6b36a5b15c21 (2026-11-01); third-party code, "
+                   "no tests cover the vulnerable lab code"),
         "vulns": [
-            ("B324", "app/app.py", 141, "HIGH"),
-            ("B608", "app/app.py", 261, "MEDIUM"),
-            ("B506", "app/app.py", 329, "MEDIUM"),
-            ("B311", "app/app.py", 295, "LOW"),
-            ("SG-dangerous-template-string", "app/app.py", 103, "HIGH"),
+            ("B602", "dockerized_labs/command_injection_lab/app.py", 30, "HIGH"),
+            ("B324", "dockerized_labs/broken_auth_lab/app.py", 103, "HIGH"),
+            ("B324", "dockerized_labs/crypto_failure_lab/app.py", 25, "HIGH"),
+            ("B307", "dockerized_labs/command_injection_lab/app.py", 49, "MEDIUM"),
+            ("B506", "dockerized_labs/a9_uckv_lab/app.py", 62, "MEDIUM"),
+            ("B301", "dockerized_labs/insec_des_lab/main.py", 40, "MEDIUM"),
+            ("B301", "dockerized_labs/software_integrity_lab/app.py", 44, "MEDIUM"),
+            ("B608", "dockerized_labs/sql_injection_lab/app.py", 51, "MEDIUM"),
+            ("B113", "dockerized_labs/ssrf_lab/app.py", 37, "MEDIUM"),
+            ("B317", "dockerized_labs/xxe_lab/app.py", 57, "MEDIUM"),
         ],
     },
 }
@@ -180,21 +187,15 @@ def rule_patch(repo: Path, file: str, rule: str, line: int) -> str | None:
     from run_rule_baseline import generate_rule_patch  # noqa: E402
 
     source = (repo / file).read_text(encoding="utf-8")
-    patched, generated = generate_rule_patch(rule, source)
-    if not generated:
-        return None
     original_fn = function_at(source, line)
     if original_fn is None:
         return None
-    name = original_fn.split("def ", 1)[1].split("(", 1)[0].strip()
-    try:
-        tree = ast.parse(patched)
-    except SyntaxError:
+    # Apply the regex rules to the vulnerable function only (not the first
+    # match anywhere in the file), the same unit the LLM methods repair.
+    patched_fn, generated = generate_rule_patch(rule, original_fn)
+    if not generated or patched_fn.strip() == original_fn.strip():
         return None
-    for node in ast.walk(tree):
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == name:
-            return function_at(patched, node.lineno)
-    return None
+    return patched_fn
 
 
 def collect_environment(session: requests.Session) -> dict:
