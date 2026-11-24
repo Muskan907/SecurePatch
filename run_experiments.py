@@ -104,6 +104,10 @@ EXPERIMENTS = {
     "ablation_no_rag": {"session": "C", "dataset": "D1", "method": "llm", "model": ABLATION_MODEL,
                         "use_rag": False, "prompt_mode": "full", "fallback": False,
                         "label": "SecurePatch + Llama, without RAG", "role": "ablation"},
+    # Trend: number of retrieved RAG chunks k. k=0 is ablation_no_rag and
+    # k=6 (the default) is llama_full, so only k=3 needs extra runs.
+    "topk_3":         {"session": "C", "dataset": "D1", "method": "llm", "model": ABLATION_MODEL, **LLM_FULL,
+                       "rag_top_k": 3, "label": "SecurePatch + Llama, RAG k=3", "role": "ablation"},
     "fallback_full":  {"session": "C", "dataset": "D1", "method": "llm", "model": DEFAULT_MODEL,
                        "use_rag": True, "prompt_mode": "full", "fallback": True,
                        "fallback_models": ["llama3.1", "qwen2.5-1.5b", "phi3-mini"],
@@ -256,7 +260,7 @@ def run_one(session, exp_name: str, exp: dict, v, seed: int) -> dict:
                 "repo_path": ds["repo"], "file_path": file, "line": line,
                 "model": exp["model"], "use_rag": exp["use_rag"], "prompt_mode": exp["prompt_mode"],
                 "fallback": exp["fallback"], "fallback_models": exp.get("fallback_models"),
-                "seed": seed, "temperature": TEMPERATURE,
+                "seed": seed, "temperature": TEMPERATURE, "rag_top_k": exp.get("rag_top_k"),
             }
             gen, elapsed = post(session, "/api/generate-patch", payload)
             meta = gen.get("patch") or {}
