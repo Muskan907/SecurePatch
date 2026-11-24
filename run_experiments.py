@@ -310,8 +310,9 @@ def run_one(session, exp_name: str, exp: dict, v, seed: int) -> dict:
         # problem, not a model failure. Stop so it is not counted; resume later.
         if exp["method"] == "llm" and ("500 Server Error" in text or "out-of-memory" in text.lower()):
             raise BackendDown(
-                "Ollama could not load the model (usually not enough free RAM). "
-                "Close other apps (VS Code, browser, Docker) and run the same command again."
+                "Ollama could not load the model (not enough free RAM, or a GPU driver "
+                "error after Docker/WSL restarts). Close heavy apps, restart Ollama "
+                "(tray icon -> Quit, then open Ollama again) and run the same command again."
             ) from exc
         row["error"] = text[:2000]
         if row["verdict"] == "ERROR" and not row["patch_generated"]:
