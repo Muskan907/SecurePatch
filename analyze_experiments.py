@@ -313,7 +313,10 @@ def main():
             md += ["## Before vs after this iteration (D1, verified %)", "",
                    md_table(["Model", "Earlier study", "Now (mean ± std, 3 seeds)"], comp),
                    "", "Changes since the earlier study: context-window fix (num_ctx 8192, task placed last), "
-                   "capped RAG context, related tests passed to the prompt, Semgrep-assisted validation.", ""]
+                   "capped RAG context, related tests passed to the prompt, Semgrep-assisted validation. "
+                   "**Important:** the earlier study checked the target rule across the whole repository, so a rule "
+                   "that also occurs elsewhere (e.g. B105, 8 hardcoded passwords) could never count as fixed; the "
+                   "validator now checks only the patched function. Earlier numbers are therefore not directly comparable.", ""]
 
     # ---- Judge agreement with human ------------------------------------
     hfile = IN / "human_check.csv"
