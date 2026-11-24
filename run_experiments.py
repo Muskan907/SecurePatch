@@ -119,7 +119,12 @@ EXPERIMENTS = {
     "plain_llm_d2":   {"session": "C", "dataset": "D2", "method": "llm", "model": ABLATION_MODEL,
                        "use_rag": False, "prompt_mode": "plain", "fallback": False,
                        "label": "Plain LLM, Llama 3.1 8B (baseline)", "role": "baseline"},
-    "rule_d2":        {"session": "C", "dataset": "D2", "method": "rule",
+    # RAG ablation on real code: separates the effect of RAG from the rest
+    # of the SecurePatch context (AST, graph, tests) on D2.
+    "ablation_no_rag_d2": {"session": "C", "dataset": "D2", "method": "llm", "model": ABLATION_MODEL,
+                           "use_rag": False, "prompt_mode": "full", "fallback": False,
+                           "label": "SecurePatch + Llama, without RAG", "role": "ablation"},
+    "rule_d2":       {"session": "C", "dataset": "D2", "method": "rule",
                        "label": "Rule-based fixer (baseline)", "role": "baseline"},
     # Optional: needs more RAM than a 16 GB laptop usually has free.
     "codestral_full": {"session": "codestral", "dataset": "D1", "method": "llm", "model": "codestral", **LLM_FULL,

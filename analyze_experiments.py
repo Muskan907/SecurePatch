@@ -113,8 +113,26 @@ def md_table(headers, rows):
     return "\n".join(out)
 
 
+# Main judge first; the second one is used for inter-judge agreement.
+JUDGE_FILES = [("GPT-OSS-120B", "judgements_gpt-oss-120b.jsonl"), ("Gemini Flash", "judgements_gemini.jsonl")]
+
+
+def load_judges(fname):
+    """Last record per run key wins (failed judgements are retried later)."""
+    out = {}
+    for j in load_jsonl(IN / fname):
+        if j.get("security") is not None or j["key"] not in out:
+            out[j["key"]] = j
+    return out
+
+
+def all_judges():
+    return [(name, load_judges(f)) for name, f in JUDGE_FILES if (IN / f).exists()]
+
+
 def judge_index():
-    return {j["key"]: j for j in load_jsonl(IN / "judgements.jsonl")}
+    judges = all_judges()
+    return judges[0][1] if judges else {}
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +346,85 @@ def main():
                    "**Important:** the earlier study checked the target rule across the whole repository, so a rule "
                    "that also occurs elsewhere (e.g. B105, 8 hardcoded passwords) could never count as fixed; the "
                    "validator now checks only the patched function. Earlier numbers are therefore not directly comparable.", ""]
+
+    # ---- Semgrep cross-check (second SAST tool) ------------------------
+    sg_rows = []
+    for e in present:
+        rows_e = [r for r in by_exp[e] if (r.get("semgrep_check") or {}).get("available")]
+        if not rows_e:
+            continue
+        ver = [r for r in rows_e if r.get("verified")]
+        rej = [r for r in rows_e if not r.get("verified")]
+
+        def introduced(r):
+            return [f.get("test_id") for f in (r["semgrep_check"].get("comparison") or {}).get("introduced", [])]
+
+        def removed_in_target(r):
+            # Only the patched function changes, so any removed finding came from it.
+            return bool((r["semgrep_check"].get("comparison") or {}).get("removed"))
+        ver_new = sum(1 for r in ver if introduced(r))
+        rej_flag = sum(1 for r in rej if introduced(r))
+        ver_conf = sum(1 for r in ver if removed_in_target(r))
+        sg_rows.append([f"{EXPERIMENTS[e]['label']} ({EXPERIMENTS[e]['dataset']})", len(rows_e),
+                        f"{len(ver)}", f"{ver_new}", f"{ver_conf} ({100 * ver_conf / len(ver):.0f}%)" if ver else "–",
+                        f"{rej_flag} of {len(rej)}"])
+    if sg_rows:
+        intro_rules = sorted({t for e in present for r in by_exp[e]
+                              for t in [f.get("test_id") for f in ((r.get("semgrep_check") or {}).get("comparison") or {}).get("introduced", [])]})
+        md += ["## Cross-check with a second SAST tool (Semgrep)", "",
+               "Verdicts use the Bandit re-scan. Semgrep re-scanned every applied patch independently "
+               "(before vs after, same file).", "",
+               md_table(["Method", "Patches checked", "Verified (Bandit)", "Verified but new Semgrep finding ↓",
+                         "Verified and Semgrep findings removed", "Rejected where Semgrep also flags a new issue"], sg_rows),
+               "", f"New Semgrep rules introduced by any patch: {', '.join(intro_rules) or 'none'}. "
+               "Semgrep does not see every Bandit rule (e.g. hard-coded passwords), so “findings removed” is a lower bound.", ""]
+
+    # ---- Judge vs SAST, and inter-judge agreement ----------------------
+    judges_all = all_judges()
+    if judges_all:
+        name0, j0 = judges_all[0]
+        cats = defaultdict(list)
+        for r in all_rows:
+            j = j0.get(r["key"])
+            if not j or j.get("security") is None:
+                continue
+            cats["Verified" if r.get("verified") else failure_category(r)].append(j)
+        jrows = []
+        for c, js in sorted(cats.items()):
+            jrows.append([c, len(js), f"{st.mean(x['security'] for x in js):.2f}",
+                          f"{st.mean(x['behavior'] for x in js if x.get('behavior')):.2f}",
+                          f"{100 * sum(x['security'] >= 4 for x in js) / len(js):.0f}%"])
+        md += [f"## LLM judge ({name0}) vs automatic validation", "",
+               md_table(["SecurePatch verdict", "Patches", "Mean judge security", "Mean judge behaviour",
+                         "Judge security ≥ 4"], jrows),
+               "", "If the judge and the SAST validation agree, verified patches score high and "
+               "‘vulnerability still present’ patches score low.", ""]
+        if len(judges_all) > 1:
+            name1, j1 = judges_all[1]
+            arows = []
+            for crit in ("security", "behavior", "quality"):
+                pairs = [(j0[k][crit], j1[k][crit]) for k in j0 if k in j1
+                         and j0[k].get(crit) is not None and j1[k].get(crit) is not None]
+                if len(pairs) < 3:
+                    continue
+                try:
+                    rv = st.correlation([a for a, _ in pairs], [b for _, b in pairs])
+                except Exception:  # noqa: BLE001
+                    rv = float("nan")
+                arows.append([crit, len(pairs), f"{100 * sum(a == b for a, b in pairs) / len(pairs):.1f}",
+                              f"{100 * sum(abs(a - b) <= 1 for a, b in pairs) / len(pairs):.1f}",
+                              f"{st.mean(abs(a - b) for a, b in pairs):.2f}", f"{rv:.2f}"])
+            if arows:
+                md += [f"## Inter-judge agreement ({name0} vs {name1})", "",
+                       md_table(["Criterion", "Patches", "Exact (%)", "Within ±1 (%)", "Mean abs. diff.", "Pearson r"], arows), ""]
+                srows = []
+                for e in present:
+                    s1 = summarize(by_exp[e], j1)
+                    if s1["judge_security"][0] is not None:
+                        srows.append([f"{EXPERIMENTS[e]['label']} ({EXPERIMENTS[e]['dataset']})"] +
+                                     [fmt(*s1[f"judge_{c}"], digits=2) for c in ("security", "behavior", "quality")])
+                md += [f"### Second judge scores ({name1})", "",
+                       md_table(["Method", "Security", "Behaviour", "Quality"], srows), ""]
 
     # ---- Judge agreement with human ------------------------------------
     hfile = IN / "human_check.csv"
