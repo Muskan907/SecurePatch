@@ -160,12 +160,14 @@ def results_table(dataset, exps, summaries):
 
 # ---------------------------------------------------------------------------
 def failure_category(r):
+    text = f"{r.get('error') or ''} {r.get('reason') or ''}".lower()
     if r.get("verified"):
         return "Verified"
+    if "guardrail" in text:
+        return "Invalid / blocked by guardrails"
     if not r.get("patch_generated"):
         return "No patch / generation failed"
-    if not r.get("syntax_valid") or r.get("verdict") == "REJECTED" and r.get("tests_passed") in (None, 0) \
-            and not r.get("regression_passed") and "guardrail" in str(r.get("reason", "")).lower():
+    if not r.get("syntax_valid"):
         return "Invalid / blocked by guardrails"
     if not r.get("regression_passed"):
         return "Broke existing tests"
