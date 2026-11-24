@@ -268,6 +268,8 @@ def generate(
     model: str = "qwen2.5-coder",
     temperature: Optional[float] = None,
     timeout: int = 600,
+    seed: Optional[int] = None,
+    num_ctx: Optional[int] = None,
 ) -> LLMResult:
     if not prompt or not prompt.strip():
         raise ValueError("Prompt cannot be empty.")
@@ -282,6 +284,11 @@ def generate(
     options = _model_options(model)
     if temperature is not None:
         options["temperature"] = temperature
+    # A fixed seed makes sampling (temperature > 0) reproducible.
+    if seed is not None:
+        options["seed"] = int(seed)
+    if num_ctx is not None:
+        options["num_ctx"] = int(num_ctx)
 
     payload = {
         "model": ollama_model,
