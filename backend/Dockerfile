@@ -16,13 +16,18 @@ RUN apt-get update \
 WORKDIR /app
 
 # CPU-only PyTorch keeps the image small (sentence-transformers needs torch).
+# The pip cache mount keeps finished downloads between builds (it is not part
+# of the image), and the longer timeout/retries survive slow connections.
 COPY requirements.txt .
-RUN pip install --index-url https://download.pytorch.org/whl/cpu torch \
-    && pip install -r requirements.txt
+RUN --mount=type=cache,target=/root/.cache/pip \
+    PIP_NO_CACHE_DIR=0 pip install --timeout 120 --retries 10 \
+        --index-url https://download.pytorch.org/whl/cpu torch \
+    && PIP_NO_CACHE_DIR=0 pip install --timeout 120 --retries 10 -r requirements.txt
 
 # Semgrep in its own venv: it pins libraries that conflict with ChromaDB.
-RUN python -m venv /opt/semgrep \
-    && /opt/semgrep/bin/pip install semgrep==1.186.0
+RUN --mount=type=cache,target=/root/.cache/pip \
+    python -m venv /opt/semgrep \
+    && PIP_NO_CACHE_DIR=0 /opt/semgrep/bin/pip install --timeout 120 --retries 10 semgrep==1.186.0
 
 COPY backend/ backend/
 COPY src/ src/
