@@ -136,7 +136,7 @@ k8s/
 │   ├── ghcr/          use the images published by CD (ghcr.io/...) instead of local builds
 │   └── ci/            used by the CD pipeline on a throwaway kind cluster (no Ollama)
 ├── jobs/model-pull    one-off Job that downloads the LLM into the Ollama volume
-└── extras/            optional frontend autoscaler (needs metrics-server)
+└── extras/            optional frontend autoscaler (needs metrics-server), Prometheus + Grafana
 ```
 
 | Component | Kubernetes object | Why |
@@ -163,3 +163,61 @@ kubectl delete namespace securepatch           # remove everything (incl. volume
 Stop `docker compose` first: both use ports 8000 and 8080.
 
 **Pipelines:** CI validates every overlay against the Kubernetes API schemas (`kubeconform`). CD deploys `k8s/overlays/ci` to a real `kind` cluster, waits for the rollouts, then runs a health check and a sample scan inside the cluster before any image is published.
+
+## 10. Live monitoring (Prometheus + Grafana)
+
+**What the live dashboard shows.** While SecurePatch is in use, a Grafana page updates every 5 seconds. It shows:
+
+- whether the backend and the local LLM (Ollama) are up
+- how many scans ran and how many vulnerabilities they found, by severity
+- how many patches each model generated, and whether each one succeeded, was blocked by the safety guardrails or failed
+- what share of patches passed validation (VERIFIED)
+- how often the fallback model was needed
+- how long the LLM takes per patch and how many tokens it uses
+- how fast each API endpoint answers
+
+It is the same kind of operations dashboard used for production services.
+
+**How it works:**
+
+1. The backend exposes **`/metrics`** in the Prometheus text format, implemented in `src/metrics.py` with no extra dependency.
+2. **Prometheus** reads it every 5 s and stores the history.
+3. **Grafana** draws the provisioned dashboard *SecurePatch — Live* (`monitoring/grafana/dashboards/securepatch.json`).
+
+| Metric | Meaning |
+|---|---|
+| `securepatch_http_requests_total`, `securepatch_http_request_duration_seconds` | Requests and latency per API route and status |
+| `securepatch_scans_total`, `securepatch_findings_total{severity}` | Scans run and findings found |
+| `securepatch_patch_generations_total{model,outcome}` | LLM attempts: `success`, `guardrail_blocked`, `failed` |
+| `securepatch_llm_generation_seconds{model}`, `securepatch_llm_tokens_total{model,direction}` | LLM speed and token use |
+| `securepatch_fallback_used_total` | Patches produced by a fallback model |
+| `securepatch_validations_total{verdict}` | Validation results (`VERIFIED`, `REJECTED`, …) |
+| `securepatch_ollama_up` | 1 when Ollama answers (checked at most every 15 s) |
+
+Counters start from zero whenever the backend restarts.
+
+**Run with Docker Compose.** Monitoring is an opt-in profile, so the normal `docker compose up` is unchanged:
+
+```bash
+docker compose --profile monitoring up -d --build
+# Grafana    http://localhost:3000  (opens the dashboard; view without login, admin/admin to edit)
+# Prometheus http://localhost:9090  (Status → Targets shows what is being scraped)
+```
+
+**With the backend running on this computer** (`uvicorn backend.main:app --port 8000`), start only the monitoring containers:
+
+```bash
+docker compose --profile monitoring up -d prometheus grafana
+```
+
+Prometheus scrapes both `backend:8000` (Compose) and `host.docker.internal:8000` (host). The one that is not running simply shows as *down* under Status → Targets, and the dashboard uses whichever is up.
+
+**On Kubernetes:**
+
+```bash
+kubectl -n securepatch create configmap grafana-dashboards \
+  --from-file=monitoring/grafana/dashboards/securepatch.json
+kubectl apply -f k8s/extras/monitoring.yaml      # Grafana http://localhost:3000
+```
+
+**Demo:** open the dashboard, then scan a repository and generate and validate a patch in the SecurePatch UI. The panels change within a few seconds.

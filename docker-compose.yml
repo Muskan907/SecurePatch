@@ -10,6 +10,8 @@
 #   docker compose --profile ollama --profile setup run --rm model-pull
 #
 # Frontend: http://localhost:8080    Backend: http://localhost:8000/docs
+# Live dashboard (Prometheus + Grafana): docker compose --profile monitoring up -d
+#   Grafana http://localhost:3000   Prometheus http://localhost:9090
 name: securepatch
 
 services:
@@ -73,6 +75,45 @@ services:
     depends_on:
       - ollama
 
+  # Live dashboard (optional):  docker compose --profile monitoring up -d
+  # Grafana: http://localhost:3000 (dashboard "SecurePatch — Live",
+  # anonymous viewing; admin/admin to edit)   Prometheus: http://localhost:9090
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    profiles: ["monitoring"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    # Also scrapes a backend started on the host with uvicorn.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    profiles: ["monitoring"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/securepatch.json
+      GF_USERS_DEFAULT_THEME: dark
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
   # Build-only: the locked-down test sandbox image used when the backend
   # runs on the host with SANDBOX_MODE=auto|docker.
   sandbox-image:
@@ -85,3 +126,5 @@ volumes:
   ollama-models:
   workspace:
   hf-cache:
+  prometheus-data:
+  grafana-data:
