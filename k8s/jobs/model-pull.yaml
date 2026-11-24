@@ -1,0 +1,26 @@
+# One-off: download the default model into the Ollama volume.
+#   kubectl apply -f k8s/jobs/model-pull.yaml
+#   kubectl -n securepatch logs -f job/model-pull
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: model-pull
+  namespace: securepatch
+spec:
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: model-pull
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: pull
+          image: ollama/ollama:0.40.17
+          env:
+            - name: OLLAMA_HOST
+              value: http://ollama:11434
+          command: ["ollama"]
+          # Use qwen2.5-coder:1.5b instead on a laptop with little RAM.
+          args: ["pull", "qwen2.5-coder:7b"]

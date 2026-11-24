@@ -1,0 +1,24 @@
+# Optional autoscaling for the stateless frontend (2-5 pods at 70 % CPU).
+# Needs metrics-server, which Docker Desktop does not install by default:
+#   kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+#   kubectl apply -f k8s/extras/frontend-hpa.yaml
+# The backend is not autoscaled: it keeps validation state in memory.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend
+  namespace: securepatch
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70

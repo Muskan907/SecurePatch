@@ -1,0 +1,23 @@
+# Deploy the images published by the CD pipeline instead of local builds.
+#   kubectl apply -k k8s/overlays/ghcr
+# Change "muskan907" if the images live under another owner, and pin a
+# version tag (e.g. 1.0.0 or sha-abc1234) instead of "latest" for real use.
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../../base
+images:
+  - name: securepatch-backend
+    newName: ghcr.io/muskan907/securepatch-backend
+    newTag: latest
+  - name: securepatch-frontend
+    newName: ghcr.io/muskan907/securepatch-frontend
+    newTag: latest
+patches:
+  - target:
+      kind: Deployment
+      labelSelector: app.kubernetes.io/name in (backend,frontend)
+    patch: |-
+      - op: replace
+        path: /spec/template/spec/containers/0/imagePullPolicy
+        value: Always

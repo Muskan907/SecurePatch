@@ -167,3 +167,28 @@ jobs:
       - uses: actions/checkout@v4
       - run: docker compose config --quiet
       - run: docker compose -f docker-compose.prod.yml config --quiet
+
+  # -------------------------------------------------------
+  # Kubernetes manifests: render every overlay and validate
+  # against the official Kubernetes API schemas
+  # -------------------------------------------------------
+  kubernetes:
+    name: Kubernetes · validate manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz \
+            | tar -xz -C /usr/local/bin kubeconform
+
+      - name: Validate base and overlays
+        run: |
+          for dir in k8s/base k8s/overlays/ghcr k8s/overlays/ci; do
+            echo "::group::$dir"
+            kubectl kustomize "$dir" | kubeconform -strict -summary -
+            echo "::endgroup::"
+          done
+          kubeconform -strict -summary k8s/jobs k8s/extras

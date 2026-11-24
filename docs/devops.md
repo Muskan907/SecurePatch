@@ -33,6 +33,7 @@ Runs on every push and pull request.
 | **Security** | Bandit SARIF uploaded to GitHub code scanning · **build fails on any HIGH-severity finding** in `backend/` or `src/` · `pip-audit` dependency CVE report · demo scan of `sample_repo` |
 | **Frontend** | `npm ci` · ESLint · production build · `dist` artifact |
 | **Compose** | `docker compose config` for dev and prod stacks |
+| **Kubernetes** | Every Kustomize overlay rendered and validated against the Kubernetes schemas (`kubeconform`) |
 
 SecurePatch scans its own code in CI. The one HIGH finding it reported, SHA1 in RAG chunk IDs (B324), was fixed with `usedforsecurity=False`.
 
@@ -45,7 +46,7 @@ SecurePatch scans its own code in CI. The one HIGH finding it reported, SHA1 in 
 | Tag `v1.2.3` | Same, plus tags `1.2.3` / `1.2` and a **GitHub Release** with notes and compose files |
 | Push + `DEPLOY_HOST` secret set | SSH deploy: `docker compose pull && up -d` on the server |
 
-**Smoke test:** the backend image is started, `/api/health` must answer, and a real scan of `sample_repo` through the API must return findings before any image is published.
+**Smoke tests:** the backend image is started, `/api/health` must answer, and a real scan of `sample_repo` through the API must return findings. The same checks then run on a throwaway Kubernetes (kind) cluster. Images are only published if both pass.
 
 **Optional deployment secrets** (repository → Settings → Secrets → Actions): `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY`. Without them the deploy job is skipped.
 
@@ -121,3 +122,42 @@ Semgrep findings go through the same pipeline (AI patch, sandbox, verdict). For 
 **Setup (once):** `python scripts/setup_semgrep.py`
 
 Semgrep goes into its own environment, `.tools/semgrep`, because it pins `opentelemetry` versions that break ChromaDB. About 270 Python rules from the registry packs `p/default`, `p/python` and `p/flask` are cached in `.tools/python-rules.yml`, so later scans work offline. Telemetry is disabled with `--metrics=off`. The Docker image installs Semgrep the same way and bakes the rules in. Without Semgrep, SecurePatch automatically falls back to Bandit only.
+
+## 9. Kubernetes
+
+The same stack as Docker Compose, written as Kubernetes manifests and managed with Kustomize.
+
+```text
+k8s/
+├── base/              namespace, config, volumes, ollama, backend, frontend, network policy
+├── overlays/
+│   ├── ghcr/          use the images published by CD (ghcr.io/...) instead of local builds
+│   └── ci/            used by the CD pipeline on a throwaway kind cluster (no Ollama)
+├── jobs/model-pull    one-off Job that downloads the LLM into the Ollama volume
+└── extras/            optional frontend autoscaler (needs metrics-server)
+```
+
+| Component | Kubernetes object | Why |
+|---|---|---|
+| Ollama | Deployment + ClusterIP Service + 20 Gi volume | Internal only; models survive restarts |
+| Backend | Deployment (1 replica, `Recreate`) + LoadBalancer :8000 + 2 volumes | Startup/readiness/liveness probes, non-root user 10001, all Linux capabilities dropped, CPU/RAM limits |
+| Frontend | Deployment (2 replicas, rolling update) + LoadBalancer :8080 | Stateless, zero-downtime updates; optional autoscaling 2–5 pods |
+| Settings | ConfigMap | Same values as `docker-compose.yml`; no secrets stored (Git tokens are per request) |
+| Security | Namespace Pod Security `baseline`, NetworkPolicy | Only the backend may reach Ollama (enforced on clusters with Calico/Cilium) |
+
+The backend runs one replica on purpose: validation state is kept in memory and the workspace volume is `ReadWriteOnce`. It could scale out after that state moves to a shared store, such as Redis or a database.
+
+**Run on Docker Desktop** (Settings → Kubernetes → Enable, *kubeadm*):
+
+```bash
+docker compose build backend frontend          # build the images Kubernetes will use
+kubectl apply -k k8s/base                      # deploy
+kubectl apply -f k8s/jobs/model-pull.yaml      # first time: download the LLM
+kubectl -n securepatch get pods                # wait until all are Running / READY
+# Frontend http://localhost:8080 · API http://localhost:8000/docs
+kubectl delete namespace securepatch           # remove everything (incl. volumes)
+```
+
+Stop `docker compose` first: both use ports 8000 and 8080.
+
+**Pipelines:** CI validates every overlay against the Kubernetes API schemas (`kubeconform`). CD deploys `k8s/overlays/ci` to a real `kind` cluster, waits for the rollouts, then runs a health check and a sample scan inside the cluster before any image is published.

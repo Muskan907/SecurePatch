@@ -1,0 +1,12 @@
+# Non-secret backend settings (same values as docker-compose.yml).
+# Git tokens are never stored here: users paste them per request in the UI.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+data:
+  OLLAMA_BASE_URL: http://ollama:11434
+  ALLOWED_ORIGINS: http://localhost:8080,http://127.0.0.1:8080
+  # The backend pod is the isolation boundary for test runs.
+  SANDBOX_MODE: local
+  SEMGREP_TIMEOUT: "300"
