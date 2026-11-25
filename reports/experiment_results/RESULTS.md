@@ -51,7 +51,7 @@ Generated from `workspace/experiments/v2`. Every rate is computed per seed (seed
 | Max RAG context (chars) | 6000 |
 | Fallback order | qwen2.5-coder → llama3.1 → qwen2.5-1.5b → phi3-mini |
 | pytest timeout (s) | 180 |
-| Judge model / temperature / seed | deepseek-coder-v2:16b-lite-instruct-q2_K / 0.0 / 7 |
+| LLM judges / temperature | GPT-OSS-120B (Groq, main) and Gemini 3.5 Flash (second) / 0.0 |
 
 ## Datasets
 
