@@ -3,7 +3,17 @@
 \usepackage{times,graphicx,amsmath,booktabs,cite,url}
 \usepackage[ruled,linesnumbered]{algorithm2e}
 \usepackage{array} % column types for table layout only
-\usepackage{float} % keeps each figure and table where it is discussed
+\usepackage[section]{placeins} % figures and tables never leave their own section
+
+% Let figures and tables sit at the top or bottom of a page so that text fills
+% the rest of the page (no half-empty pages, no float-only pages).
+\renewcommand{\topfraction}{0.92}
+\renewcommand{\bottomfraction}{0.85}
+\renewcommand{\textfraction}{0.06}
+\renewcommand{\floatpagefraction}{0.92}
+\setcounter{topnumber}{3}
+\setcounter{bottomnumber}{2}
+\setcounter{totalnumber}{4}
 
 % Compact, uniform spacing around figures, tables and captions
 \setlength{\textfloatsep}{10pt plus 2pt minus 2pt}
@@ -78,7 +88,7 @@ Retrieval-augmented generation (RAG) gives a model relevant documents at inferen
 \subsection{Comparison and Research Gap}
 Table~\ref{tab:related} compares the most relevant studies on problem, method, data, metrics, results, limitations and relevance to our work. It can be seen that no single study combines local models, repository context, multi-tool SAST validation and regression testing on Python code. Learned models are evaluated by similarity to a reference fix, and LLM studies are evaluated on isolated functions with cloud models. The gap addressed by SecurePatch is therefore a repair pipeline that uses project context, runs on a developer's machine, and accepts a patch only when independent checks confirm that the vulnerability is gone and the behaviour is preserved.
 
-\begin{table}[H]
+\begin{table}[!tb]
 \centering
 \caption{Comparison of Key Related Studies}
 \label{tab:related}
@@ -115,7 +125,7 @@ SecurePatch (ours) & SAST findings in Python & Local LLM, context, RAG, guardrai
 
 \textbf{Assumptions and scope.} We assume the finding can be fixed inside one function, that the existing tests describe the intended behaviour, and that the code is Python~3. Fixes that need changes across several files, vulnerabilities that SAST tools cannot detect, false-positive triage, and exploit generation are out of scope. Table~\ref{tab:notation} lists the notation used in the rest of the paper.
 
-\begin{table}[H]
+\begin{table}[!tb]
 \centering
 \caption{Notation}
 \label{tab:notation}
@@ -147,9 +157,9 @@ $e(\cdot)$, $\mathrm{sim}(q,c)$ & Embedding function and cosine similarity of qu
 \subsection{Architecture}
 Fig.~\ref{fig:arch} shows the main components of SecurePatch and how they connect. The system is organised in six layers. The interface layer receives a repository through the web interface or the REST API. The detection layer runs Bandit and Semgrep and produces a list of findings. The context layer collects the callers of the vulnerable function from a source graph, the related tests and imports, and the most similar repository chunks from the RAG index. The generation layer builds the prompt, calls a local model served by Ollama, and checks the answer with guardrails. The validation layer applies the candidate patch in a sandbox and runs the security re-scan and the regression tests, and the output layer returns the verdict, the report and the fixed code. All components run in containers that can be deployed with Docker Compose or Kubernetes, and the backend exports metrics to Prometheus and Grafana.
 
-\begin{figure}[H]
+\begin{figure}[!tb]
 \centering
-\includegraphics[width=0.82\linewidth]{figures/architecture.pdf}
+\includegraphics[width=0.9\linewidth]{figures/architecture.pdf}
 \caption{Layered architecture of SecurePatch. Arrows show the data flow from repository import to the verdict; all models run locally through Ollama.}
 \label{fig:arch}
 \end{figure}
@@ -186,7 +196,7 @@ that is, only when all three checks pass. A security fix that breaks the tests i
 
 Algorithm~\ref{alg:repair} gives the overall repair procedure. It locates the vulnerable function, builds the context and the prompt, and then tries the models of the fallback chain in order until one returns a usable function, which is passed to validation; if no model succeeds, the finding is reported as NO\_PATCH instead of being silently skipped. Algorithm~\ref{alg:validate} gives the validation procedure. It applies the checks from the cheapest to the most expensive, so that a patch which fails a guardrail never reaches the slower re-scan and test steps, and it returns the reason for every rejection so that each failed run can be analysed later.
 
-\begin{algorithm}[H]
+\begin{algorithm}[!tb]
 \caption{Repair of one SAST finding}
 \label{alg:repair}
 \KwIn{Repository $R$ with tests $T$, finding $f=(r,\ell,s)$, ordered model list $M$, retrieval size $k$}
@@ -203,7 +213,7 @@ $P \leftarrow$ prompt$(f, C, D, \phi)$ with the task and $\phi$ placed last\;
 \Return NO\_PATCH (no model produced a usable function)\;
 \end{algorithm}
 
-\begin{algorithm}[H]
+\begin{algorithm}[!tb]
 \caption{\textsc{Validate}: multi-stage acceptance of a candidate patch}
 \label{alg:validate}
 \KwIn{Repository $R$, tests $T$, finding $f=(r,\ell,s)$, original function $\phi$, candidate $\phi'$}
@@ -219,7 +229,7 @@ run $T$ on $R'$ with a timeout of 180 s\;
 \Return VERIFIED\;
 \end{algorithm}
 
-\begin{figure}[H]
+\begin{figure}[!tb]
 \centering
 \includegraphics[width=0.92\linewidth]{figures/workflow.pdf}
 \caption{Workflow for one finding, from the input repository to the final verdict. Every step is shown as a numbered box and every check as a decision; any failed check leads to a logged rejection.}
@@ -255,7 +265,7 @@ where $\phi'_{ij}$ is the patch for finding $i$ under seed $j$. We report the me
 
 \textbf{Parameters.} Table~\ref{tab:params} lists every setting used. Each configuration was run on all ten findings of its dataset with three seeds, giving 30 runs per configuration and 330 runs in total.
 
-\begin{table}[H]
+\begin{table}[!tb]
 \centering
 \caption{Parameters and Configurations Used in All Experiments}
 \label{tab:params}
@@ -289,7 +299,7 @@ Configurations, total runs & 11 configurations, 330 runs \\
 \subsection{RQ1: Effect of Context-Aware Generation}
 Table~\ref{tab:d1} and Table~\ref{tab:d2} compare SecurePatch with the baselines on every metric for D1 and D2; each cell gives the mean and standard deviation over three seeds, and the best value in each row is in bold. On the external PyGoat project, SecurePatch with Llama~3.1~8B achieved the highest verified rate, $86.7 \pm 5.8\%$, against $73.3 \pm 5.8\%$ for the plain LLM and $40.0\%$ for the rule-based fixer. It also produced a usable patch in every run; the 100\% test pass rate on D2 should be read with care, because PyGoat has no tests for the patched code. On the synthetic D1 the picture is different: the plain LLM reached $80.0\%$ and SecurePatch with Llama $76.7 \pm 5.8\%$, a difference smaller than one standard deviation. Both LLM configurations clearly beat the rule-based fixer, which can only handle the rule types it has templates for.
 
-\begin{table}[H]
+\begin{table}[!tb]
 \centering
 \caption{Results on D1 (Synthetic Benchmark), Mean $\pm$ Standard Deviation over Three Seeds}
 \label{tab:d1}
@@ -313,7 +323,7 @@ Judge quality (1--5) & \textbf{4.69 $\pm$ 0.11} & 4.12 $\pm$ 0.28 & 4.10 $\pm$ 0
 \end{tabular}
 \end{table}
 
-\begin{table}[H]
+\begin{table}[!tb]
 \centering
 \caption{Results on D2 (OWASP PyGoat), Mean $\pm$ Standard Deviation over Three Seeds}
 \label{tab:d2}
@@ -339,7 +349,7 @@ Judge quality (1--5) & 2.63 $\pm$ 0.06 & 3.01 $\pm$ 0.29 & \textbf{3.75 $\pm$ 0.
 
 Fig.~\ref{fig:main} summarises the verified rate of each method on both datasets. As shown in the figure, context helped on real code and not on synthetic code. The functions in D1 are short and self-contained, so the finding and the function alone contain everything the model needs, and extra context only adds text for a small model to process. In PyGoat, the vulnerable functions are Django views that depend on request objects, templates and helpers defined elsewhere, and without this context the plain LLM more often produced patches that were blocked by the guardrails or that left the unsafe call in place (eight of its 30 runs on D2, against four for the full pipeline).
 
-\begin{figure}[H]
+\begin{figure}[!tb]
 \centering
 \includegraphics[width=0.8\linewidth]{figures/verified_main.pdf}
 \caption{Verified fix rate of each method on D1 (plain bars) and D2 (hatched bars), mean $\pm$ standard deviation over three seeds. Qwen2.5-Coder was evaluated on D1 only.}
@@ -348,7 +358,7 @@ Fig.~\ref{fig:main} summarises the verified rate of each method on both datasets
 
 \textbf{Statistical significance.} Table~\ref{tab:stats} reports the paired comparison per finding. On D2, SecurePatch won on two findings against the plain LLM and lost on none, and against the version without RAG it won on three and lost on one, but with only ten findings these differences are not significant ($p = 0.50$). The clearest difference is against the rule-based fixer on D2, with five wins, no losses and $p = 0.06$. The results therefore show a consistent direction rather than a proven effect, and a larger set of findings is needed to confirm the benefit of context.
 
-\begin{table}[H]
+\begin{table}[!tb]
 \centering
 \caption{Paired Comparison per Finding (Verified Runs out of Three; Two-Sided Wilcoxon Signed-Rank Test)}
 \label{tab:stats}
@@ -370,7 +380,7 @@ D1: Fallback chain vs Qwen alone & 2 / 0 / 8 & 24 vs 22 & 0.50 \\
 
 \textbf{Ablation of context components.} Fig.~\ref{fig:ablation} removes the context step by step. On D2, removing only RAG lowered the verified rate from $86.7\%$ to $76.7 \pm 15.3\%$, and removing all context lowered it further to $73.3\%$. On D1, the version without RAG was the best of all configurations ($83.3 \pm 5.8\%$). The large standard deviation without RAG on D2 shows that, without retrieved examples of how the project is written, results depend much more on the random seed. The ablation therefore suggests that RAG is useful for unfamiliar, real-world code and unnecessary for small isolated examples.
 
-\begin{figure}[H]
+\begin{figure}[!tb]
 \centering
 \includegraphics[width=0.8\linewidth]{figures/ablation_context.pdf}
 \caption{Ablation of the context components with Llama~3.1~8B: full pipeline, pipeline without RAG, and plain prompt without any context, on both datasets.}
@@ -379,9 +389,9 @@ D1: Fallback chain vs Qwen alone & 2 / 0 / 8 & 24 vs 22 & 0.50 \\
 
 \textbf{Number of retrieved chunks.} Fig.~\ref{fig:topk} shows the trend over $k \in \{0, 3, 6\}$ on D1. The verified rate stays between 73\% and 83\%, while generation time grows from 7.1~s to 25.4~s because the prompt becomes longer. On short synthetic functions more retrieval therefore costs time without improving results, which matches the ablation above. The fallback chain, in contrast, raised the Qwen result on D1 from $73.3\%$ to $80.0 \pm 10.0\%$, because runs in which Qwen produced no usable function were completed by the next model.
 
-\begin{figure}[H]
+\begin{figure}[!tb]
 \centering
-\includegraphics[width=0.66\linewidth]{figures/topk_trend.pdf}
+\includegraphics[width=0.72\linewidth]{figures/topk_trend.pdf}
 \caption{Effect of the number of retrieved RAG chunks $k$ on the verified rate (left axis) and on generation time per patch (right axis), Llama~3.1~8B on D1.}
 \label{fig:topk}
 \end{figure}
@@ -389,7 +399,7 @@ D1: Fallback chain vs Qwen alone & 2 / 0 / 8 & 24 vs 22 & 0.50 \\
 \subsection{RQ2: Value of Multi-Stage Validation}
 Table~\ref{tab:rescan} reports a second ablation in which the security re-scan is removed and a patch is accepted whenever it is valid and the tests pass. Under this weaker rule, 10.0--16.7\% of all runs would have been accepted even though the vulnerability was still present. For example, with Llama on D1 the acceptance rate would rise from $76.7\%$ to $93.3\%$, and every extra patch would be insecure. Tests alone check behaviour, not security, so the re-scan is the component that makes a ``fix'' trustworthy.
 
-\begin{table}[H]
+\begin{table}[!tb]
 \centering
 \caption{Ablation: Removing the Security Re-Scan from Validation (Mean $\pm$ Standard Deviation)}
 \label{tab:rescan}
@@ -409,16 +419,16 @@ SecurePatch, Llama 3.1 8B (D2) & 100.0 $\pm$ 0.0 & 86.7 $\pm$ 5.8 & 13.3 $\pm$ 5
 
 \textbf{Error analysis.} Fig.~\ref{fig:errors} breaks down the outcome of all 330 runs. The most common failure of the LLM configurations was a patch that still contained the vulnerability, followed by outputs blocked by the guardrails; no run was rejected only because it broke the regression tests. Per rule, the hardest findings were B102 (\texttt{exec}), B202 (unsafe \texttt{tarfile} extraction) and B301 (\texttt{pickle}), where a secure fix requires changing the data format or adding path checks rather than replacing one call. Several models replaced \texttt{pickle} with the \texttt{dill} library, which is equally unsafe; the re-scan rejected these patches, and Semgrep independently flagged them. The rule-based fixer never produced a wrong patch, but it had no template for half of the findings on D1 and 60\% on D2.
 
-\begin{figure}[H]
+\begin{figure}[!tb]
 \centering
-\includegraphics[width=0.8\linewidth]{figures/error_analysis.pdf}
+\includegraphics[width=0.92\linewidth]{figures/error_analysis.pdf}
 \caption{Outcome of every run per configuration (30 runs each), grouped by the reason for rejection.}
 \label{fig:errors}
 \end{figure}
 
 \textbf{Independent checks.} Table~\ref{tab:agree} summarises the two independent checks of the automatic verdicts. Semgrep found no new issue in any verified patch, and the verified patches removed 73--80\% of the Semgrep findings that existed before (Semgrep has no rule for some Bandit checks, such as hard-coded passwords, so this is a lower bound). Fig.~\ref{fig:judge} shows the main judge's scores grouped by the automatic verdict: verified patches received a mean security score of 4.39 out of 5, and patches rejected because the vulnerability remained received 1.29. The two judges agreed within one point on 87.8\% of security scores (Pearson $r=0.77$), but only on 65.9\% of behaviour scores ($r=0.50$). The judges also revealed that some plain and no-RAG fixes for B102 removed \texttt{exec} entirely, which satisfies the scanner but breaks the function's purpose (security 5, behaviour 1); this explains part of their advantage on D1.
 
-\begin{table}[H]
+\begin{table}[!tb]
 \centering
 \caption{Agreement of Independent Checks with the Automatic Verdicts}
 \label{tab:agree}
@@ -438,9 +448,9 @@ Inter-judge agreement on behaviour (within $\pm 1$ / Pearson $r$) & 65.9\% / 0.5
 \end{tabular}
 \end{table}
 
-\begin{figure}[H]
+\begin{figure}[!tb]
 \centering
-\includegraphics[width=0.66\linewidth]{figures/judge_vs_sast.pdf}
+\includegraphics[width=0.72\linewidth]{figures/judge_vs_sast.pdf}
 \caption{Mean scores of the main LLM judge (GPT-OSS-120B) for security, behaviour and quality, grouped by the automatic verdict of SecurePatch.}
 \label{fig:judge}
 \end{figure}
