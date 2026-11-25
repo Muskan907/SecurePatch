@@ -143,20 +143,20 @@ Fig.~\ref{fig:arch} shows the main components of SecurePatch and how they connec
   arr/.style={-{Stealth[length=2mm]}, thick}]
 % Row 1: input
 \node[box] (ui) {Web interface (React)};
-\node[box, right=of ui] (api) {FastAPI backend\(orchestration)};
-\node[box, right=of api] (repo) {Repository import\(Git / upload)};
+\node[box, right=of ui] (api) {FastAPI backend\\(orchestration)};
+\node[box, right=of api] (repo) {Repository import\\(Git / upload)};
 % Row 2: detection and context
-\node[box, below=of ui] (scan) {Detection: Bandit\+ Semgrep scanner};
-\node[box, below=of api] (ctx) {Context: source graph,\callers, tests, imports};
-\node[box, below=of repo] (rag) {RAG index\(MiniLM + ChromaDB)};
+\node[box, below=of ui] (scan) {Detection: Bandit\\+ Semgrep scanner};
+\node[box, below=of api] (ctx) {Context: source graph,\\callers, tests, imports};
+\node[box, below=of repo] (rag) {RAG index\\(MiniLM + ChromaDB)};
 % Row 3: generation
 \node[box, below=of scan] (prompt) {Prompt builder};
-\node[box, below=of ctx] (llm) {Local LLM (Ollama),\model fallback chain};
+\node[box, below=of ctx] (llm) {Local LLM (Ollama),\\model fallback chain};
 \node[box, below=of rag] (guard) {Pre-apply guardrails};
 % Row 4: validation (right to left)
-\node[box, below=of guard] (patch) {Sandbox patcher +\post-apply guardrail};
-\node[box, below=of llm] (val) {Validation: re-scan\(Bandit, Semgrep) + pytest};
-\node[box, below=of prompt] (verdict) {Verdict and report\(VERIFIED / REJECTED)};
+\node[box, below=of guard] (patch) {Sandbox patcher +\\post-apply guardrail};
+\node[box, below=of llm] (val) {Validation: re-scan\\(Bandit, Semgrep) + pytest};
+\node[box, below=of prompt] (verdict) {Verdict and report\\(VERIFIED / REJECTED)};
 % Row 5: operations
 \node[draw, dashed, rounded corners=2pt, align=center, font=\footnotesize, below=0.6cm of val, text width=12.0cm, minimum height=0.8cm] (ops) {Operations: Prometheus metrics, Grafana dashboard, Docker Compose and Kubernetes deployment};
 \draw[arr] (ui) -- (api);
@@ -169,7 +169,7 @@ Fig.~\ref{fig:arch} shows the main components of SecurePatch and how they connec
 \draw[arr] (guard) -- (patch);
 \draw[arr] (patch) -- (val);
 \draw[arr] (val) -- (verdict);
-\draw[arr] (api.west) -| (scan.north);
+\draw[arr] (api.south west) -- (scan.north east);
 \draw[arr] (ctx.south west) -- (prompt.north east);
 \end{tikzpicture}
 \caption{Architecture of SecurePatch. Arrows show the data flow from repository import to the final verdict; all models run locally.}
