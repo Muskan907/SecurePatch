@@ -135,66 +135,127 @@ ax.text(dx, 3.6, "Deployment: Docker Compose / Kubernetes\n(backend, frontend, O
 save(fig, "architecture")
 
 # ============================================================ Workflow
-# Two columns: column A = preparation and generation, column B = checks.
-fig, ax = plt.subplots(figsize=(7.0, 5.45))
-ax.set_xlim(0, 7.0)
-ax.set_ylim(0, 5.45)
+# Three phases side by side; every step is a numbered box, every check a
+# diamond, and every rejection reason gets its own outcome box.
+W, H = 7.0, 6.05
+fig, ax = plt.subplots(figsize=(W, H))
+ax.set_xlim(-0.1, W)
+ax.set_ylim(0, H)
 ax.axis("off")
-AX, BX = 1.55, 4.35          # column centres
-SW, SH = 2.3, 0.44           # step box
-DW, DH = 2.0, 0.52           # decision diamond
-FS = 8.3
-ya = {"start": 5.1, "s1": 4.47, "s2": 3.86, "s3": 3.25, "s4": 2.64, "d1": 1.96, "am": 1.18, "np": 0.45}
-yb = {"d2": 5.1, "s5": 4.47, "d3": 3.84, "s6": 3.2, "d4": 2.56, "s7": 1.93, "d5": 1.3, "end": 0.45}
+FS = 7.4
+CA, CB, CC, CR = 0.86, 3.0, 5.1, 6.58     # column centres
+BW, BH = 1.66, 0.42                       # step box
+DW, DH = 1.62, 0.5                        # decision diamond
+RW, RH = 0.8, 0.46                        # rejection box
+TOP = 5.62
 
-ax.text(AX, 5.42, "A. Preparation and generation", ha="center", va="center", fontsize=8.5, fontweight="bold")
-ax.text(BX, 5.42, "B. Checks and verdict", ha="center", va="center", fontsize=8.5, fontweight="bold")
+# phase bands
+for cx, w, title in ((CA, 1.78, "Phase 1: Detection and context"),
+                     (CB, 1.78, "Phase 2: Patch generation"),
+                     (CC, 1.78, "Phase 3: Validation")):
+    ax.add_patch(FancyBboxPatch((cx - w / 2, 0.08), w, H - 0.12, boxstyle="round,pad=0,rounding_size=0.06",
+                                fc=FILL["band"], ec="#9ca3af", lw=0.7))
+    ax.text(cx, H - 0.2, title, ha="center", va="center", fontsize=8, fontweight="bold")
 
-box(ax, AX, ya["start"], SW, 0.4, "Input: repository $R$, finding $f$", "io", fs=FS, round_=0.18)
-box(ax, AX, ya["s1"], SW, SH, "Step 1: scan $R$ (Bandit, Semgrep)", fs=FS)
-box(ax, AX, ya["s2"], SW, SH, "Step 2: locate vulnerable function $\\phi$", fs=FS)
-box(ax, AX, ya["s3"], SW, SH, "Step 3: build context (callers,\ntests, imports, top-$k$ chunks)", fs=FS)
-box(ax, AX, ya["s4"], SW, SH, "Step 4: generate $\\phi'$ with model $m$", "llm", fs=FS)
-diamond(ax, AX, ya["d1"], DW, DH + 0.08, "Usable function?", fs=FS)
-diamond(ax, AX, ya["am"], 1.7, DH + 0.08, "Another model?", fs=FS)
-box(ax, AX, ya["np"], 1.4, 0.38, "NO_PATCH", "bad", fs=FS, bold=True, round_=0.18)
 
-box(ax, BX, yb["s5"], SW, SH, "Step 5: apply $\\phi'$ in sandbox copy", fs=FS)
-box(ax, BX, yb["s6"], SW, SH, "Step 6: function-scoped re-scan\n(Bandit) and Semgrep diff", fs=FS)
-box(ax, BX, yb["s7"], SW, SH, "Step 7: run regression tests", fs=FS)
-diamond(ax, BX, yb["d2"], DW, DH, "Guardrails pass?", fs=FS)
-diamond(ax, BX, yb["d3"], DW, DH, "Names defined?", fs=FS)
-diamond(ax, BX, yb["d4"], DW, DH, "Rule $r$ removed?", fs=FS)
-diamond(ax, BX, yb["d5"], DW, DH, "Tests pass?", fs=FS)
-box(ax, BX, yb["end"], SW, 0.4, "VERIFIED: return $\\phi'$", "ok", fs=FS, bold=True, round_=0.18)
+def vline(x, y0, y1):
+    ax.plot([x, x], [y0, y1], color=EDGE, lw=0.9)
 
-hA = {"start": 0.2, "s1": SH / 2, "s2": SH / 2, "s3": SH / 2, "s4": SH / 2, "d1": (DH + 0.08) / 2,
-      "am": (DH + 0.08) / 2, "np": 0.19}
-for a, b in (("start", "s1"), ("s1", "s2"), ("s2", "s3"), ("s3", "s4"), ("s4", "d1")):
-    arrow(ax, (AX, ya[a] - hA[a]), (AX, ya[b] + hA[b]))
-arrow(ax, (AX, ya["d1"] - hA["d1"]), (AX, ya["am"] + hA["am"]), label="no", lpos=0.5)
-arrow(ax, (AX, ya["am"] - hA["am"]), (AX, ya["np"] + hA["np"]), label="no", lpos=0.5)
-# yes: next model -> back to step 4
-LR = 0.22
-poly_arrow(ax, [(AX - 0.85, ya["am"]), (LR, ya["am"]), (LR, ya["s4"]), (AX - SW / 2, ya["s4"])],
-           label="yes", lpt=(LR + 0.05, (ya["am"] + ya["s4"]) / 2))
-# usable -> column B (gutter)
-GX = 2.95
-poly_arrow(ax, [(AX + DW / 2, ya["d1"]), (GX, ya["d1"]), (GX, yb["d2"]), (BX - DW / 2, yb["d2"])],
-           label="yes", lpt=(AX + DW / 2 + 0.05, ya["d1"] + 0.1))
 
-hB = {"d2": DH / 2, "s5": SH / 2, "d3": DH / 2, "s6": SH / 2, "d4": DH / 2, "s7": SH / 2, "d5": DH / 2, "end": 0.2}
-seqB = ["d2", "s5", "d3", "s6", "d4", "s7", "d5", "end"]
-for a, b in zip(seqB[:-1], seqB[1:]):
-    arrow(ax, (BX, yb[a] - hB[a]), (BX, yb[b] + hB[b]), label="yes" if a.startswith("d") else None, lpos=0.5)
+# ---------------- Phase 1
+ya = [TOP - 0.18 - i * 0.6 for i in range(8)]
+A = [("Step 1: import repository\n(Git URL or ZIP upload)", "io"),
+     ("Step 2: SAST scan with Bandit\nand Semgrep: list of findings", "core"),
+     ("Step 3: select finding\n$f=(r,\\ell,s)$", "core"),
+     ("Step 4: locate function $\\phi$\nthat contains line $\\ell$", "core"),
+     ("Function\nfound?", "dec"),
+     ("Step 5: source graph: callers,\nrelated tests and imports", "core"),
+     ("Step 6: RAG: top-$k$ similar\nchunks (max 6,000 chars)", "core"),
+     ("Step 7: build prompt (rule,\ncontext, task, $\\phi$ last)", "core")]
+for (t, kind), y in zip(A, ya):
+    if kind == "dec":
+        diamond(ax, CA, y, DW, DH, t, fs=FS)
+    else:
+        box(ax, CA, y, BW, BH, t, kind, fs=FS)
+for i in range(7):
+    h0 = DH / 2 if A[i][1] == "dec" else BH / 2
+    h1 = DH / 2 if A[i + 1][1] == "dec" else BH / 2
+    arrow(ax, (CA, ya[i] - h0), (CA, ya[i + 1] + h1), label="yes" if A[i][1] == "dec" else None)
+# function not found -> error
+ERR_Y = 0.42
+box(ax, CA, ERR_Y, 1.3, 0.38, "ERROR: function\nnot identified", "bad", fs=FS, bold=True, round_=0.12)
+LX = 0.04
+ax.plot([CA - DW / 2, LX], [ya[4], ya[4]], color=EDGE, lw=0.9)
+ax.text(LX + 0.05, ya[4] - 0.1, "no", fontsize=7, style="italic", ha="left")
+vline(LX, ERR_Y, ya[4])
+arrow(ax, (LX, ERR_Y), (CA - 0.65, ERR_Y))
 
-# rejection rail on the right
-RX, RAIL = 6.45, 5.85
-box(ax, RX, 3.2, 0.95, 0.5, "REJECTED\n(logged)", "bad", fs=FS, bold=True, round_=0.18)
-for d in ("d2", "d3", "d4", "d5"):
-    ax.plot([BX + DW / 2, RAIL], [yb[d], yb[d]], color=EDGE, lw=0.9)
-    ax.text(BX + DW / 2 + 0.05, yb[d] + 0.09, "no", fontsize=7.5, style="italic", va="center")
-ax.plot([RAIL, RAIL], [yb["d2"], yb["d5"]], color=EDGE, lw=0.9)
-arrow(ax, (RAIL, 3.2), (RX - 0.475, 3.2))
+# Phase 1 -> Phase 2 (through the gutter, into the top of step 8)
+G1 = 1.86
+yb_s8 = TOP - 0.18
+ax.plot([CA + BW / 2, G1], [ya[7], ya[7]], color=EDGE, lw=0.9)
+vline(G1, ya[7], TOP + 0.12)
+ax.plot([G1, CB], [TOP + 0.12, TOP + 0.12], color=EDGE, lw=0.9)
+arrow(ax, (CB, TOP + 0.12), (CB, yb_s8 + 0.24))
+
+# ---------------- Phase 2
+SB_W = 1.4
+box(ax, CB, yb_s8, SB_W, 0.48, "Step 8: generate $\\phi'$\nwith current model\n($T=0.2$, fixed seed)", "llm", fs=FS)
+y9 = yb_s8 - 0.66
+box(ax, CB, y9, SB_W, BH, "Step 9: extract one\nfunction, keep imports", fs=FS)
+yd1 = y9 - 0.7
+diamond(ax, CB, yd1, 1.62, 0.6, "Valid function\nand guardrails\npass?", fs=FS)
+yd2 = yd1 - 0.8
+diamond(ax, CB, yd2, 1.45, 0.52, "Another model\nin the chain?", fs=FS)
+ynp = yd2 - 0.68
+box(ax, CB, ynp, 1.3, 0.38, "NO_PATCH:\ngeneration failed", "bad", fs=FS, bold=True, round_=0.12)
+arrow(ax, (CB, yb_s8 - 0.24), (CB, y9 + BH / 2))
+arrow(ax, (CB, y9 - BH / 2), (CB, yd1 + 0.3))
+arrow(ax, (CB, yd1 - 0.3), (CB, yd2 + 0.26), label="no")
+arrow(ax, (CB, yd2 - 0.26), (CB, ynp + 0.19), label="no")
+# yes: next model -> back to step 8
+LB = 2.16
+ax.plot([CB - 1.45 / 2, LB], [yd2, yd2], color=EDGE, lw=0.9)
+vline(LB, yd2, yb_s8)
+arrow(ax, (LB, yb_s8), (CB - SB_W / 2, yb_s8))
+ax.text(LB - 0.12, (yd2 + yb_s8) / 2, "yes: try next model", fontsize=7, style="italic", va="center",
+        ha="center", rotation=90)
+# note box
+box(ax, CB, 1.12, 1.66, 1.5,
+    "Fallback chain:\nQwen2.5-Coder 7B\n$\\rightarrow$ Llama 3.1 8B\n$\\rightarrow$ Qwen2.5 1.5B $\\rightarrow$ Phi-3 Mini\n\n"
+    "Guardrails: exactly one\nfunction, same name, no eval,\nexec, os.system, pickle.loads,\n"
+    "marshal.loads, shell=True", "core", fs=6.6, ls="--")
+
+# Phase 2 -> Phase 3
+G2 = 4.06
+ax.plot([CB + 1.62 / 2, G2], [yd1, yd1], color=EDGE, lw=0.9)
+ax.text(CB + 1.62 / 2 + 0.03, yd1 + 0.09, "yes", fontsize=7, style="italic")
+
+# ---------------- Phase 3
+yc = [TOP - 0.18 - i * 0.64 for i in range(7)]
+C = [("Step 10: replace $\\phi$ by $\\phi'$\nin a sandbox copy (AST)", "core"),
+     ("All names\ndefined?", "dec"),
+     ("Step 11: function-scoped Bandit\nre-scan and Semgrep diff", "core"),
+     ("Rule $r$ removed\nfrom $\\phi'$?", "dec"),
+     ("Step 12: run regression\ntests (pytest, 180 s)", "core"),
+     ("Tests\npass?", "dec"),
+     ("VERIFIED: return $\\phi'$,\ndiff and report", "ok")]
+REJ = {1: "REJECTED:\nundefined\nname", 3: "REJECTED:\nvulnerability\nremains", 5: "REJECTED:\ntests failed"}
+vline(G2, yd1, yc[0])
+arrow(ax, (G2, yc[0]), (CC - BW / 2, yc[0]))
+for i, ((t, kind), y) in enumerate(zip(C, yc)):
+    if kind == "dec":
+        diamond(ax, CC, y, DW, DH, t, fs=FS)
+        arrow(ax, (CC + DW / 2, y), (CR - RW / 2, y))
+        ax.text(CC + DW / 2 + 0.02, y + 0.09, "no", fontsize=7, style="italic")
+        box(ax, CR, y, RW, RH + 0.06, REJ[i], "bad", fs=6.8, bold=True, round_=0.1)
+    else:
+        box(ax, CC, y, BW, BH, t, kind, fs=FS, bold=(kind == "ok"), round_=0.12 if kind == "ok" else 0.06)
+for i in range(6):
+    h0 = DH / 2 if C[i][1] == "dec" else BH / 2
+    h1 = DH / 2 if C[i + 1][1] == "dec" else BH / 2
+    arrow(ax, (CC, yc[i] - h0), (CC, yc[i + 1] + h1), label="yes" if C[i][1] == "dec" else None)
+ax.text(CC, 0.55, "Every outcome (verified, rejected,\nno patch or error) is logged with\nits reason and exported as a\nPrometheus metric.",
+        ha="center", va="center", fontsize=6.6, style="italic", linespacing=1.2)
 save(fig, "workflow")
 print("diagrams written")
