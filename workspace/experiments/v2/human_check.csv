@@ -1,0 +1,228 @@
+key,vulnerability,verdict,original_function,patched_function,human_security_1to5,human_behavior_1to5,human_quality_1to5
+qwen_full|B108@benchmark_vulnerabilities.py:97|22,B108,VERIFIED,"def vulnerable_temp_file():
+    # INTENTIONAL B108
+    filename = ""/tmp/securepatch_temp.txt""
+
+    with open(filename, ""w"") as handle:
+        handle.write(""temporary data"")
+
+    return filename","def vulnerable_temp_file():
+    # INTENTIONAL B108
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False) as temp_handle:
+        filename = temp_handle.name
+        temp_handle.write(b""temporary data"")
+
+    return filename",,,
+plain_llm_d1|B307@benchmark_vulnerabilities.py:21|11,B307,VERIFIED,"def vulnerable_eval(expression):
+    # INTENTIONAL B307
+    return eval(expression)","def vulnerable_eval(expression):
+    import ast
+    return ast.literal_eval(expression)",,,
+fallback_full|B608@benchmark_vulnerabilities.py:67|22,B608,VERIFIED,"def vulnerable_sql(user_id):
+    # INTENTIONAL B608
+    connection = sqlite3.connect("":memory:"")
+    cursor = connection.cursor()
+
+    query = (
+        ""SELECT * FROM users WHERE id = ""
+        + user_id
+    )
+
+    cursor.execute(query)
+
+    return cursor.fetchall()","def vulnerable_sql(user_id):
+    # INTENTIONAL B608
+    connection = sqlite3.connect("":memory:"")
+    cursor = connection.cursor()
+
+    query = (
+        ""SELECT * FROM users WHERE id = ?""
+    )
+    
+    cursor.execute(query, (user_id,))
+
+    return cursor.fetchall()",,,
+plain_llm_d2|B506@dockerized_labs/a9_uckv_lab/app.py:62|33,B506,VERIFIED,"@app.route(""/upload_yaml"", methods=[""POST""])
+def upload_yaml():
+    if ""file"" not in request.files:
+        flash(""No file selected"")
+        return redirect(url_for(""lab1""))
+
+    file = request.files[""file""]
+    if file.filename == """":
+        flash(""No file selected"")
+        return redirect(url_for(""lab1""))
+
+    if file and allowed_file(file.filename):
+        try:
+            # Intentionally vulnerable YAML loading
+            data = yaml.load(file.stream, Loader=yaml.Loader)
+            return render_template(""result.html"", content=data, filename=file.filename)
+        except Exception as e:
+            flash(f""Error processing file: {str(e)}"")
+            logger.error(f""Error processing YAML file {file.filename}: {str(e)}"")
+            return redirect(url_for(""lab1""))
+
+    flash(""Invalid file type"")
+    return redirect(url_for(""lab1""))","def upload_yaml():
+    if ""file"" not in request.files:
+        flash(""No file selected"")
+        return redirect(url_for(""lab1""))
+
+    file = request.files[""file""]
+    if file.filename == """":
+        flash(""No file selected"")
+        return redirect(url_for(""lab1""))
+
+    if file and allowed_file(file.filename):
+        try:
+            data = yaml.safe_load(file.stream)
+            return render_template(""result.html"", content=data, filename=file.filename)
+        except Exception as e:
+            flash(f""Error processing file: {str(e)}"")
+            logger.error(f""Error processing YAML file {file.filename}: {str(e)}"")
+            return redirect(url_for(""lab1""))
+
+    flash(""Invalid file type"")
+    return redirect(url_for(""lab1""))",,,
+ablation_no_rag|B506@benchmark_vulnerabilities.py:51|22,B506,VERIFIED,"def vulnerable_yaml(data):
+    # INTENTIONAL B506
+    return yaml.load(
+        data,
+        Loader=yaml.Loader
+    )","def vulnerable_yaml(data):
+    return yaml.safe_load(data)",,,
+qwen_full|B324@benchmark_vulnerabilities.py:40|22,B324,VERIFIED,"def vulnerable_md5(password):
+    # INTENTIONAL B324
+    return hashlib.md5(
+        password.encode()
+    ).hexdigest()","def vulnerable_md5(password):
+    # INTENTIONAL B324
+    return hashlib.sha256(
+        password.encode()
+    ).hexdigest()",,,
+topk_3|B506@benchmark_vulnerabilities.py:51|22,B506,VERIFIED,"def vulnerable_yaml(data):
+    # INTENTIONAL B506
+    return yaml.load(
+        data,
+        Loader=yaml.Loader
+    )","def vulnerable_yaml(data):
+    return yaml.safe_load(data)",,,
+plain_llm_d1|B105@benchmark_vulnerabilities.py:111|22,B105,VERIFIED,"def vulnerable_password():
+    # INTENTIONAL B105
+    password = ""SuperSecret123""
+
+    return password","def vulnerable_password():
+    from getpass import getpass
+    password = getpass(""Enter your password: "")
+    hashed_password = hashlib.sha256(password.encode()).hexdigest()
+
+    return hashed_password",,,
+fallback_full|B105@benchmark_vulnerabilities.py:111|33,B105,VERIFIED,"def vulnerable_password():
+    # INTENTIONAL B105
+    password = ""SuperSecret123""
+
+    return password","def vulnerable_password():
+    # INTENTIONAL B105
+    import secrets
+    password = secrets.token_urlsafe(16)
+
+    return password",,,
+plain_llm_d1|B108@benchmark_vulnerabilities.py:97|11,B108,VERIFIED,"def vulnerable_temp_file():
+    # INTENTIONAL B108
+    filename = ""/tmp/securepatch_temp.txt""
+
+    with open(filename, ""w"") as handle:
+        handle.write(""temporary data"")
+
+    return filename","def vulnerable_temp_file():
+    import tempfile
+    tmp = tempfile.NamedTemporaryFile(delete=False)
+    try:
+        tmp.write(b""temporary data"")
+        tmp.flush()
+        return tmp.name
+    finally:
+        tmp.close()",,,
+plain_llm_d2|B317@dockerized_labs/xxe_lab/app.py:57|11,B317,VERIFIED,"@app.route(""/parse"", methods=[""POST""])
+def xxe_parse():
+    """"""Parse XML input - intentionally vulnerable to XXE""""""
+    if request.method == ""POST"":
+        try:
+            # Create a vulnerable XML parser that allows external entities
+            parser = make_parser()
+            parser.setFeature(feature_external_ges, True)
+
+            # Parse the XML data
+            doc = parseString(request.data.decode(""utf-8""), parser=parser)
+
+            # Extract text from the XML
+            for event, node in doc:
+                if event == START_ELEMENT and node.tagName == ""text"":
+                    doc.expandNode(node)
+                    text = node.toxml()
+                    # Get text between tags
+                    start_idx = text.find("">"")
+                    end_idx = text.find(""<"", start_idx)
+                    text = text[start_idx + 1 : end_idx]
+
+                    # Update the comment in database
+                    comment = Comment.query.first()
+                    if comment:
+                        comment.comment = text
+                    else:
+                        comment = Comment(comment=text)
+                        db.session.add(comment)
+                    db.session.commit()
+                    break
+
+            return render_template(""xxe_lab.html"")
+        except Exception as e:
+            print(f""Error parsing XML: {str(e)}"")
+            return render_template(""xxe_lab.html"", error=""Error processing XML data"")
+
+    return render_template(""xxe_lab.html"")","def xxe_parse():
+    """"""Parse XML input - intentionally vulnerable to XXE""""""
+    import defusedxml
+    if request.method == ""POST"":
+        try:
+            # Create a secure XML parser that disallows external entities
+            parser = defusedxml.parser(defusedxml.tree.TreeBuilder())
+            parser.parseString(request.data.decode(""utf-8""))
+
+            # Extract text from the XML
+            root = parser.close()
+            for elem in root.iter():
+                if elem.tag == ""text"":
+                    text = elem.text
+                    # Get text between tags
+                    start_idx = text.find("">"")
+                    end_idx = text.find(""<"", start_idx)
+                    text = text[start_idx + 1 : end_idx]
+
+                    # Update the comment in database
+                    comment = Comment.query.first()
+                    if comment:
+                        comment.comment = text
+                    else:
+                        comment = Comment(comment=text)
+                        db.session.add(comment)
+                    db.session.commit()
+                    break
+
+            return render_template(""xxe_lab.html"")
+        except Exception as e:
+            print(f""Error parsing XML: {str(e)}"")
+            return render_template(""xxe_lab.html"", error=""Error processing XML data"")
+
+    return render_template(""xxe_lab.html"")",,,
+rule_d1|B324@benchmark_vulnerabilities.py:40|33,B324,VERIFIED,"def vulnerable_md5(password):
+    # INTENTIONAL B324
+    return hashlib.md5(
+        password.encode()
+    ).hexdigest()","def vulnerable_md5(password):
+    # INTENTIONAL B324
+    return hashlib.sha256(
+        password.encode()
+    ).hexdigest()",,,

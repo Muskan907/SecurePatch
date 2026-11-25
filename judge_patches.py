@@ -52,7 +52,7 @@ JUDGES = {
         "label": "Gemini Flash (Google AI Studio)",
         "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
         "key_env": "GEMINI_API_KEY",
-        "model": "gemini-flash-latest",
+        "model": "gemini-3.8-flash",  # pinned version (not "latest") for reproducibility
         "file": "judgements_gemini.jsonl",
     },
 }
@@ -142,7 +142,7 @@ def call_judge(cfg: dict, key: str, prompt: str) -> str:
     }
     for attempt in range(8):
         try:
-            resp = requests.post(cfg["url"], json=body, timeout=180,
+            resp = requests.post(cfg["url"], json=body, timeout=120,
                                  headers={"Authorization": f"Bearer {key}"})
         except requests.RequestException as exc:
             wait = 10 * (attempt + 1)
@@ -164,7 +164,10 @@ def call_judge(cfg: dict, key: str, prompt: str) -> str:
         if resp.status_code == 404 or (resp.status_code == 400 and "model" in resp.text.lower()):
             raise StopJudging(f"Model not found: {resp.text[:300]}  (use --model with the exact name)")
         if resp.status_code >= 500:
-            time.sleep(10 * (attempt + 1))
+            wait = 10 * (attempt + 1)
+            print(f"    judge server error HTTP {resp.status_code} ({resp.text[:120].strip()}), "
+                  f"retrying in {wait}s", flush=True)
+            time.sleep(wait)
             continue
         resp.raise_for_status()
         choice = resp.json()["choices"][0]["message"]
@@ -218,6 +221,7 @@ def main():
     ap.add_argument("--judge", choices=sorted(JUDGES), required=True)
     ap.add_argument("--model", help="Override the judge model name")
     ap.add_argument("--probe", action="store_true", help="Judge only 4 patches with known answers")
+    ap.add_argument("--list-models", action="store_true", help="Show the model names this key can use")
     ap.add_argument("--delay", type=float, default=2.5, help="Seconds between API calls (free-tier limits)")
     ap.add_argument("--sample", type=int, default=12, help="Patches in the human-check sheet")
     args = ap.parse_args()
@@ -229,13 +233,27 @@ def main():
     if not key:
         sys.exit(f"Set the API key first:  $env:{cfg['key_env']} = \"your-key\"")
 
+    if args.list_models:
+        url = cfg["url"].rsplit("/chat/completions", 1)[0] + "/models"
+        resp = requests.get(url, headers={"Authorization": f"Bearer {key}"}, timeout=30)
+        print(f"HTTP {resp.status_code}")
+        try:
+            for m in resp.json().get("data", []):
+                print(" ", m.get("id"))
+        except ValueError:
+            print(resp.text[:500])
+        return
+
     runs = [r for r in load_runs_unique() if r.get("patch_generated") and r.get("patch_text")]
     by_key = {r["key"]: r for r in runs}
 
     if args.probe:
         print(f"Probe with {cfg['model']}:")
         for k, expected in PROBES:
-            res = judge_row(cfg, key, by_key[k])
+            try:
+                res = judge_row(cfg, key, by_key[k])
+            except StopJudging as exc:
+                sys.exit(f"STOPPED: {exc}")
             print(f"  S={res['security']} B={res['behavior']} Q={res['quality']}  expected: {expected}\n"
                   f"     {k}\n     reason: {res['reason'] or res['raw']}", flush=True)
             time.sleep(args.delay)
