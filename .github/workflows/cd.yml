@@ -30,7 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
 
       - name: Build backend image
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
 
       - name: Build backend image
@@ -148,7 +148,7 @@ jobs:
             context: sandbox
             file: sandbox/Dockerfile
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: docker/setup-buildx-action@v3
 
       - name: Lowercase image owner
@@ -197,7 +197,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
@@ -222,7 +222,7 @@ jobs:
         if: env.DEPLOY_HOST == ''
         run: echo "DEPLOY_HOST secret not set - skipping deployment."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.DEPLOY_HOST != ''
 
       - name: Copy compose file
