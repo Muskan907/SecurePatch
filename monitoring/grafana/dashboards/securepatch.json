@@ -212,7 +212,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(securepatch_scans_total)",
+          "expr": "sum(max without (instance, deployment) (securepatch_scans_total))",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -274,7 +274,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(securepatch_findings_total)",
+          "expr": "sum(max without (instance, deployment) (securepatch_findings_total))",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -340,7 +340,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "100 * sum(securepatch_validations_total{verdict=\"VERIFIED\"}) / clamp_min(sum(securepatch_validations_total), 1)",
+          "expr": "100 * sum(max without (instance, deployment) (securepatch_validations_total{verdict=\"VERIFIED\"})) / clamp_min(sum(max without (instance, deployment) (securepatch_validations_total)), 1)",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -410,7 +410,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum(securepatch_fallback_used_total)",
+          "expr": "sum(max without (instance, deployment) (securepatch_fallback_used_total))",
           "legendFormat": "",
           "refId": "A",
           "instant": true,
@@ -476,7 +476,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (path) (rate(securepatch_http_requests_total[1m]))",
+          "expr": "sum by (path) (max without (instance, deployment) (rate(securepatch_http_requests_total[1m])))",
           "legendFormat": "{{path}}",
           "refId": "A"
         }
@@ -530,7 +530,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, path) (rate(securepatch_http_request_duration_seconds_bucket{path!~\".*/stream\"}[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, path) (max without (instance, deployment) (rate(securepatch_http_request_duration_seconds_bucket{path!~\".*/stream\"}[5m]))))",
           "legendFormat": "{{path}}",
           "refId": "A"
         }
@@ -584,7 +584,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (severity) (securepatch_findings_total)",
+          "expr": "sum by (severity) (max without (instance, deployment) (securepatch_findings_total))",
           "legendFormat": "{{severity}}",
           "refId": "A",
           "instant": true,
@@ -682,7 +682,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (model, outcome) (securepatch_patch_generations_total)",
+          "expr": "sum by (model, outcome) (max without (instance, deployment) (securepatch_patch_generations_total))",
           "legendFormat": "{{model}} · {{outcome}}",
           "refId": "A",
           "instant": true,
@@ -779,7 +779,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (verdict) (securepatch_validations_total)",
+          "expr": "sum by (verdict) (max without (instance, deployment) (securepatch_validations_total))",
           "legendFormat": "{{verdict}}",
           "refId": "A",
           "instant": true,
@@ -877,7 +877,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (model) (rate(securepatch_llm_generation_seconds_sum[5m])) / sum by (model) (rate(securepatch_llm_generation_seconds_count[5m]))",
+          "expr": "sum by (model) (max without (instance, deployment) (rate(securepatch_llm_generation_seconds_sum[5m]))) / sum by (model) (max without (instance, deployment) (rate(securepatch_llm_generation_seconds_count[5m])))",
           "legendFormat": "{{model}} avg",
           "refId": "A"
         },
@@ -886,7 +886,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.95, sum by (le, model) (rate(securepatch_llm_generation_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le, model) (max without (instance, deployment) (rate(securepatch_llm_generation_seconds_bucket[5m]))))",
           "legendFormat": "{{model}} p95",
           "refId": "B"
         }
@@ -940,7 +940,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "60 * sum by (model, direction) (rate(securepatch_llm_tokens_total[5m]))",
+          "expr": "60 * sum by (model, direction) (max without (instance, deployment) (rate(securepatch_llm_tokens_total[5m])))",
           "legendFormat": "{{model}} {{direction}}",
           "refId": "A"
         }

@@ -39,8 +39,8 @@ ENV SEMGREP_BIN=/opt/semgrep/bin/semgrep \
 RUN python -c "from pathlib import Path; from src.semgrep_scanner import build_rules; build_rules(Path('/opt/semgrep/python-rules.yml'))"
 
 RUN useradd --create-home --uid 10001 app \
-    && mkdir -p workspace \
-    && chown -R app:app /app
+    && mkdir -p workspace /home/app/.cache/huggingface \
+    && chown -R app:app /app /home/app/.cache
 USER app
 
 # Runs tests in-process: the container itself is the isolation boundary.
