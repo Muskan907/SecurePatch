@@ -135,57 +135,66 @@ ax.text(dx, 3.6, "Deployment: Docker Compose / Kubernetes\n(backend, frontend, O
 save(fig, "architecture")
 
 # ============================================================ Workflow
-fig, ax = plt.subplots(figsize=(6.6, 10.1))
-ax.set_xlim(0, 6.6)
-ax.set_ylim(0, 10.1)
+# Two columns: column A = preparation and generation, column B = checks.
+fig, ax = plt.subplots(figsize=(7.0, 5.45))
+ax.set_xlim(0, 7.0)
+ax.set_ylim(0, 5.45)
 ax.axis("off")
-MX = 2.9            # main column x
-SW, SH = 3.3, 0.48  # step box
-DW, DH = 2.3, 0.62  # decision diamond
-REJ_X = 5.75
-y = dict([("start", 9.8), ("s1", 9.1), ("s2", 8.45), ("s3", 7.8), ("s4", 7.15), ("d1", 6.4), ("d2", 5.55),
-          ("s5", 4.8), ("d3", 4.05), ("s6", 3.3), ("d4", 2.55), ("s7", 1.8), ("d5", 1.05), ("end", 0.3)])
-REJ_Y = y["d3"]
+AX, BX = 1.55, 4.35          # column centres
+SW, SH = 2.3, 0.44           # step box
+DW, DH = 2.0, 0.52           # decision diamond
+FS = 8.3
+ya = {"start": 5.1, "s1": 4.47, "s2": 3.86, "s3": 3.25, "s4": 2.64, "d1": 1.96, "am": 1.18, "np": 0.45}
+yb = {"d2": 5.1, "s5": 4.47, "d3": 3.84, "s6": 3.2, "d4": 2.56, "s7": 1.93, "d5": 1.3, "end": 0.45}
 
-box(ax, MX, y["start"], 2.6, 0.42, "Input: repository $R$ and SAST finding $f$", "io", round_=0.2)
-box(ax, MX, y["s1"], SW, SH, "Step 1: scan $R$ with Bandit and Semgrep")
-box(ax, MX, y["s2"], SW, SH, "Step 2: locate the vulnerable function $\\phi$")
-box(ax, MX, y["s3"], SW, SH, "Step 3: build context (callers, tests,\nimports, top-$k$ RAG chunks)")
-box(ax, MX, y["s4"], SW, SH, "Step 4: build prompt, generate $\\phi'$\nwith the current model $m$", "llm")
-diamond(ax, MX, y["d1"], DW, DH, "Usable function\nreturned?")
-diamond(ax, MX, y["d2"], DW, DH, "Pre-apply\nguardrails pass?")
-box(ax, MX, y["s5"], SW, SH, "Step 5: replace $\\phi$ by $\\phi'$ in a sandbox copy")
-diamond(ax, MX, y["d3"], DW, DH, "All names\ndefined?")
-box(ax, MX, y["s6"], SW, SH, "Step 6: function-scoped Bandit re-scan\nand Semgrep comparison")
-diamond(ax, MX, y["d4"], DW, DH, "Rule $r$ removed\nfrom $\\phi'$?")
-box(ax, MX, y["s7"], SW, SH, "Step 7: run regression tests (pytest)\nin the sandbox")
-diamond(ax, MX, y["d5"], DW, DH, "All tests\npass?")
-box(ax, MX, y["end"], 2.6, 0.42, "VERIFIED: return $\\phi'$ and report", "ok", round_=0.2, bold=True)
+ax.text(AX, 5.42, "A. Preparation and generation", ha="center", va="center", fontsize=8.5, fontweight="bold")
+ax.text(BX, 5.42, "B. Checks and verdict", ha="center", va="center", fontsize=8.5, fontweight="bold")
 
-order = ["start", "s1", "s2", "s3", "s4", "d1", "d2", "s5", "d3", "s6", "d4", "s7", "d5", "end"]
-half = {k: (DH / 2 if k.startswith("d") else (0.21 if k in ("start", "end") else SH / 2)) for k in order}
-for a, b in zip(order[:-1], order[1:]):
-    arrow(ax, (MX, y[a] - half[a]), (MX, y[b] + half[b]), label="yes" if a.startswith("d") else None, lpos=0.45)
+box(ax, AX, ya["start"], SW, 0.4, "Input: repository $R$, finding $f$", "io", fs=FS, round_=0.18)
+box(ax, AX, ya["s1"], SW, SH, "Step 1: scan $R$ (Bandit, Semgrep)", fs=FS)
+box(ax, AX, ya["s2"], SW, SH, "Step 2: locate vulnerable function $\\phi$", fs=FS)
+box(ax, AX, ya["s3"], SW, SH, "Step 3: build context (callers,\ntests, imports, top-$k$ chunks)", fs=FS)
+box(ax, AX, ya["s4"], SW, SH, "Step 4: generate $\\phi'$ with model $m$", "llm", fs=FS)
+diamond(ax, AX, ya["d1"], DW, DH + 0.08, "Usable function?", fs=FS)
+diamond(ax, AX, ya["am"], 1.7, DH + 0.08, "Another model?", fs=FS)
+box(ax, AX, ya["np"], 1.4, 0.38, "NO_PATCH", "bad", fs=FS, bold=True, round_=0.18)
 
-# rejection path: every failed check ends in REJECTED
-RW, RH = 1.35, 0.5
-box(ax, REJ_X, REJ_Y, RW, RH, "REJECTED\n(reason logged)", "bad", bold=True, round_=0.2)
-VX = REJ_X - 0.35
+box(ax, BX, yb["s5"], SW, SH, "Step 5: apply $\\phi'$ in sandbox copy", fs=FS)
+box(ax, BX, yb["s6"], SW, SH, "Step 6: function-scoped re-scan\n(Bandit) and Semgrep diff", fs=FS)
+box(ax, BX, yb["s7"], SW, SH, "Step 7: run regression tests", fs=FS)
+diamond(ax, BX, yb["d2"], DW, DH, "Guardrails pass?", fs=FS)
+diamond(ax, BX, yb["d3"], DW, DH, "Names defined?", fs=FS)
+diamond(ax, BX, yb["d4"], DW, DH, "Rule $r$ removed?", fs=FS)
+diamond(ax, BX, yb["d5"], DW, DH, "Tests pass?", fs=FS)
+box(ax, BX, yb["end"], SW, 0.4, "VERIFIED: return $\\phi'$", "ok", fs=FS, bold=True, round_=0.18)
+
+hA = {"start": 0.2, "s1": SH / 2, "s2": SH / 2, "s3": SH / 2, "s4": SH / 2, "d1": (DH + 0.08) / 2,
+      "am": (DH + 0.08) / 2, "np": 0.19}
+for a, b in (("start", "s1"), ("s1", "s2"), ("s2", "s3"), ("s3", "s4"), ("s4", "d1")):
+    arrow(ax, (AX, ya[a] - hA[a]), (AX, ya[b] + hA[b]))
+arrow(ax, (AX, ya["d1"] - hA["d1"]), (AX, ya["am"] + hA["am"]), label="no", lpos=0.5)
+arrow(ax, (AX, ya["am"] - hA["am"]), (AX, ya["np"] + hA["np"]), label="no", lpos=0.5)
+# yes: next model -> back to step 4
+LR = 0.22
+poly_arrow(ax, [(AX - 0.85, ya["am"]), (LR, ya["am"]), (LR, ya["s4"]), (AX - SW / 2, ya["s4"])],
+           label="yes", lpt=(LR + 0.05, (ya["am"] + ya["s4"]) / 2))
+# usable -> column B (gutter)
+GX = 2.95
+poly_arrow(ax, [(AX + DW / 2, ya["d1"]), (GX, ya["d1"]), (GX, yb["d2"]), (BX - DW / 2, yb["d2"])],
+           label="yes", lpt=(AX + DW / 2 + 0.05, ya["d1"] + 0.1))
+
+hB = {"d2": DH / 2, "s5": SH / 2, "d3": DH / 2, "s6": SH / 2, "d4": DH / 2, "s7": SH / 2, "d5": DH / 2, "end": 0.2}
+seqB = ["d2", "s5", "d3", "s6", "d4", "s7", "d5", "end"]
+for a, b in zip(seqB[:-1], seqB[1:]):
+    arrow(ax, (BX, yb[a] - hB[a]), (BX, yb[b] + hB[b]), label="yes" if a.startswith("d") else None, lpos=0.5)
+
+# rejection rail on the right
+RX, RAIL = 6.45, 5.85
+box(ax, RX, 3.2, 0.95, 0.5, "REJECTED\n(logged)", "bad", fs=FS, bold=True, round_=0.18)
 for d in ("d2", "d3", "d4", "d5"):
-    if d == "d3":
-        arrow(ax, (MX + DW / 2, y[d]), (REJ_X - RW / 2, y[d]), label="no", lpos=0.08, loff=(0.0, 0.11))
-        continue
-    end_y = REJ_Y + RH / 2 if y[d] > REJ_Y else REJ_Y - RH / 2
-    poly_arrow(ax, [(MX + DW / 2, y[d]), (VX, y[d]), (VX, end_y)], label="no",
-               lpt=(MX + DW / 2 + 0.08, y[d] + 0.11))
-
-# fallback loop over the model chain
-LX = 0.67
-diamond(ax, LX, y["d1"], 1.15, 0.7, "Another\nmodel?", fs=7.6)
-arrow(ax, (MX - DW / 2, y["d1"]), (LX + 0.575, y["d1"]), label="no", lpos=0.5, loff=(-0.05, 0.11), ha="center")
-poly_arrow(ax, [(LX, y["d1"] + 0.35), (LX, y["s4"]), (MX - SW / 2, y["s4"])], label="yes",
-           lpt=(LX + 0.07, y["d1"] + 0.52))
-box(ax, LX, y["d2"] - 0.1, 1.05, 0.42, "NO_PATCH", "bad", bold=True, round_=0.2, fs=7.8)
-arrow(ax, (LX, y["d1"] - 0.35), (LX, y["d2"] - 0.1 + 0.21), label="no", lpos=0.5, loff=(0.05, 0))
+    ax.plot([BX + DW / 2, RAIL], [yb[d], yb[d]], color=EDGE, lw=0.9)
+    ax.text(BX + DW / 2 + 0.05, yb[d] + 0.09, "no", fontsize=7.5, style="italic", va="center")
+ax.plot([RAIL, RAIL], [yb["d2"], yb["d5"]], color=EDGE, lw=0.9)
+arrow(ax, (RAIL, 3.2), (RX - 0.475, 3.2))
 save(fig, "workflow")
 print("diagrams written")
