@@ -240,7 +240,7 @@ def main():
             ["RAG top-k chunks", rag.get("top_k")], ["Max RAG context (chars)", rag.get("max_context_chars")],
             ["Fallback order", " → ".join(b.get("fallback_order", []))],
             ["pytest timeout (s)", b.get("pytest_timeout_seconds")],
-            ["Judge model / temperature / seed", "deepseek-coder-v2:16b-lite-instruct-q2_K / 0.0 / 7"],
+            ["LLM judges / temperature", "GPT-OSS-120B (Groq, main) and Gemini 3.5 Flash (second) / 0.0"],
         ]), ""]
 
     # ---- Datasets -------------------------------------------------------
@@ -474,7 +474,7 @@ def main():
         ax.set_ylim(0, 110)
         ax.set_title("Fig. 1  Verified fix rate on D1 (mean ± std, 3 seeds)")
         fig.tight_layout()
-        fig.savefig(OUT / "fig1_main_comparison.png")
+        fig.savefig(OUT / "fig1_main_comparison.png", dpi=300); fig.savefig(OUT / "fig1_main_comparison.pdf")
         figs.append("fig1_main_comparison.png")
         plt.close(fig)
 
@@ -491,7 +491,7 @@ def main():
         fig.colorbar(im, ax=ax, label="Verified runs (of 3)")
         ax.set_title("Fig. 2  Which method fixes which vulnerability (D1)")
         fig.tight_layout()
-        fig.savefig(OUT / "fig2_heatmap.png")
+        fig.savefig(OUT / "fig2_heatmap.png", dpi=300); fig.savefig(OUT / "fig2_heatmap.pdf")
         figs.append("fig2_heatmap.png")
         plt.close(fig)
 
@@ -503,7 +503,7 @@ def main():
         ax.set_ylim(0, 110)
         ax.set_title("Fig. 3  Ablation: effect of RAG, context and fallback (D1)")
         fig.tight_layout()
-        fig.savefig(OUT / "fig3_ablation.png")
+        fig.savefig(OUT / "fig3_ablation.png", dpi=300); fig.savefig(OUT / "fig3_ablation.pdf")
         figs.append("fig3_ablation.png")
         plt.close(fig)
 
@@ -520,7 +520,7 @@ def main():
         ax.legend(fontsize=7, bbox_to_anchor=(1.01, 1), loc="upper left")
         ax.set_title("Fig. 4  Error analysis: outcome of every run")
         fig.tight_layout()
-        fig.savefig(OUT / "fig4_failures.png")
+        fig.savefig(OUT / "fig4_failures.png", dpi=300); fig.savefig(OUT / "fig4_failures.pdf")
         figs.append("fig4_failures.png")
         plt.close(fig)
 
@@ -537,7 +537,7 @@ def main():
         ax.legend(fontsize=6)
         ax.set_title("Fig. 5  Success vs. time")
         fig.tight_layout()
-        fig.savefig(OUT / "fig5_time_vs_success.png")
+        fig.savefig(OUT / "fig5_time_vs_success.png", dpi=300); fig.savefig(OUT / "fig5_time_vs_success.pdf")
         figs.append("fig5_time_vs_success.png")
         plt.close(fig)
 
@@ -559,7 +559,7 @@ def main():
         ax.legend(fontsize=6)
         ax.set_title("Fig. 6  Verified rate by vulnerability severity (D1)")
         fig.tight_layout()
-        fig.savefig(OUT / "fig6_severity.png")
+        fig.savefig(OUT / "fig6_severity.png", dpi=300); fig.savefig(OUT / "fig6_severity.pdf")
         figs.append("fig6_severity.png")
         plt.close(fig)
 
@@ -578,7 +578,7 @@ def main():
         ax.legend(fontsize=7)
         ax.set_title("Fig. 7  LLM-as-judge patch quality (mean ± std over seeds)")
         fig.tight_layout()
-        fig.savefig(OUT / "fig7_judge.png")
+        fig.savefig(OUT / "fig7_judge.png", dpi=300); fig.savefig(OUT / "fig7_judge.pdf")
         figs.append("fig7_judge.png")
         plt.close(fig)
 
@@ -596,7 +596,7 @@ def main():
         ax.legend(fontsize=8)
         ax.set_title("Fig. 8  Effect of RAG context size (Llama 3.1 8B, D1)")
         fig.tight_layout()
-        fig.savefig(OUT / "fig8_topk_trend.png")
+        fig.savefig(OUT / "fig8_topk_trend.png", dpi=300); fig.savefig(OUT / "fig8_topk_trend.pdf")
         figs.append("fig8_topk_trend.png")
         plt.close(fig)
 
