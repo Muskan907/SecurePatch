@@ -1,0 +1,926 @@
+[
+  {
+    "collected_at": "2026-11-24T21:11:12",
+    "backend": {
+      "python": "3.12.6",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+      "packages": {
+        "fastapi": "0.141.1",
+        "bandit": "1.9.4",
+        "chromadb": "1.5.9",
+        "sentence-transformers": "6.1.0",
+        "langchain-text-splitters": "1.1.3",
+        "langchain-core": "1.6.6",
+        "torch": "2.14.1",
+        "pytest": "9.1.1",
+        "requests": "2.34.2"
+      },
+      "semgrep": {
+        "available": true,
+        "binary": "C:\\Users\\muska\\Desktop\\SecurePatch\\.tools\\semgrep\\Scripts\\semgrep.exe",
+        "rules_cached": true
+      },
+      "ollama_version": "0.40.17",
+      "models": {
+        "qwen2.5-coder": {
+          "ollama_name": "qwen2.5-coder:7b",
+          "digest": "dae161e27b0e",
+          "size_gb": 4.68,
+          "quantization": "Q4_K_M",
+          "parameters": "7.6B"
+        },
+        "llama3.1": {
+          "ollama_name": "llama3.1:8b",
+          "digest": "46e0c10c039e",
+          "size_gb": 4.92,
+          "quantization": "Q4_K_M",
+          "parameters": "8.0B"
+        },
+        "codestral": {
+          "ollama_name": "codestral:22b-v0.1-q3_K_S",
+          "digest": "435a805994fa",
+          "size_gb": 9.64,
+          "quantization": "Q3_K_S",
+          "parameters": "22.2B"
+        },
+        "qwen2.5-1.5b": {
+          "ollama_name": "qwen2.5:1.5b",
+          "digest": "65ec06548149",
+          "size_gb": 0.99,
+          "quantization": "Q4_K_M",
+          "parameters": "1.5B"
+        },
+        "phi3-mini": {
+          "ollama_name": "phi3:mini",
+          "digest": "4f2222927938",
+          "size_gb": 2.18,
+          "quantization": "Q4_0",
+          "parameters": "3.8B"
+        }
+      },
+      "generation_options": {
+        "qwen2.5-coder": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "llama3.1": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.1,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "codestral": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        }
+      },
+      "fallback_order": [
+        "qwen2.5-coder",
+        "llama3.1",
+        "qwen2.5-1.5b",
+        "phi3-mini"
+      ],
+      "rag": {
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "chunk_size_chars": 6400,
+        "chunk_overlap_chars": 1200,
+        "top_k": 6,
+        "max_context_chars": 6000,
+        "max_chunk_chars": 2000
+      },
+      "sandbox": {
+        "mode": "auto",
+        "image": "securepatch-sandbox:latest",
+        "docker_ready": false,
+        "isolation": "process",
+        "limits": {
+          "network": "none",
+          "memory": "1g",
+          "cpus": "1",
+          "pids": 256
+        }
+      },
+      "pytest_timeout_seconds": 180
+    },
+    "runner": {
+      "python": "3.12.6",
+      "seeds": [
+        11,
+        22,
+        33
+      ],
+      "temperature": 0.2,
+      "ablation_model": "llama3.1",
+      "default_model": "qwen2.5-coder"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 5800HS with Radeon Graphics",
+      "ram_gb": 15.4,
+      "gpu": "AMD Radeon(TM) Graphics; NVIDIA GeForce RTX 3050 Laptop GPU",
+      "os": "Windows-11-10.0.26300-SP0"
+    }
+  },
+  {
+    "collected_at": "2026-11-24T21:17:41",
+    "backend": {
+      "python": "3.12.6",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+      "packages": {
+        "fastapi": "0.141.1",
+        "bandit": "1.9.4",
+        "chromadb": "1.5.9",
+        "sentence-transformers": "6.1.0",
+        "langchain-text-splitters": "1.1.3",
+        "langchain-core": "1.6.6",
+        "torch": "2.14.1",
+        "pytest": "9.1.1",
+        "requests": "2.34.2"
+      },
+      "semgrep": {
+        "available": true,
+        "binary": "C:\\Users\\muska\\Desktop\\SecurePatch\\.tools\\semgrep\\Scripts\\semgrep.exe",
+        "rules_cached": true
+      },
+      "ollama_version": "0.40.17",
+      "models": {
+        "qwen2.5-coder": {
+          "ollama_name": "qwen2.5-coder:7b",
+          "digest": "dae161e27b0e",
+          "size_gb": 4.68,
+          "quantization": "Q4_K_M",
+          "parameters": "7.6B"
+        },
+        "llama3.1": {
+          "ollama_name": "llama3.1:8b",
+          "digest": "46e0c10c039e",
+          "size_gb": 4.92,
+          "quantization": "Q4_K_M",
+          "parameters": "8.0B"
+        },
+        "codestral": {
+          "ollama_name": "codestral:22b-v0.1-q3_K_S",
+          "digest": "435a805994fa",
+          "size_gb": 9.64,
+          "quantization": "Q3_K_S",
+          "parameters": "22.2B"
+        },
+        "qwen2.5-1.5b": {
+          "ollama_name": "qwen2.5:1.5b",
+          "digest": "65ec06548149",
+          "size_gb": 0.99,
+          "quantization": "Q4_K_M",
+          "parameters": "1.5B"
+        },
+        "phi3-mini": {
+          "ollama_name": "phi3:mini",
+          "digest": "4f2222927938",
+          "size_gb": 2.18,
+          "quantization": "Q4_0",
+          "parameters": "3.8B"
+        }
+      },
+      "generation_options": {
+        "qwen2.5-coder": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "llama3.1": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.1,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "codestral": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        }
+      },
+      "fallback_order": [
+        "qwen2.5-coder",
+        "llama3.1",
+        "qwen2.5-1.5b",
+        "phi3-mini"
+      ],
+      "rag": {
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "chunk_size_chars": 6400,
+        "chunk_overlap_chars": 1200,
+        "top_k": 6,
+        "max_context_chars": 6000,
+        "max_chunk_chars": 2000
+      },
+      "sandbox": {
+        "mode": "auto",
+        "image": "securepatch-sandbox:latest",
+        "docker_ready": false,
+        "isolation": "process",
+        "limits": {
+          "network": "none",
+          "memory": "1g",
+          "cpus": "1",
+          "pids": 256
+        }
+      },
+      "pytest_timeout_seconds": 180
+    },
+    "runner": {
+      "python": "3.12.6",
+      "seeds": [
+        11,
+        22,
+        33
+      ],
+      "temperature": 0.2,
+      "ablation_model": "llama3.1",
+      "default_model": "qwen2.5-coder"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 5800HS with Radeon Graphics",
+      "ram_gb": 15.4,
+      "gpu": "AMD Radeon(TM) Graphics; NVIDIA GeForce RTX 3050 Laptop GPU",
+      "os": "Windows-11-10.0.26300-SP0"
+    }
+  },
+  {
+    "collected_at": "2026-11-24T21:24:17",
+    "backend": {
+      "python": "3.12.6",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+      "packages": {
+        "fastapi": "0.141.1",
+        "bandit": "1.9.4",
+        "chromadb": "1.5.9",
+        "sentence-transformers": "6.1.0",
+        "langchain-text-splitters": "1.1.3",
+        "langchain-core": "1.6.6",
+        "torch": "2.14.1",
+        "pytest": "9.1.1",
+        "requests": "2.34.2"
+      },
+      "semgrep": {
+        "available": true,
+        "binary": "C:\\Users\\muska\\Desktop\\SecurePatch\\.tools\\semgrep\\Scripts\\semgrep.exe",
+        "rules_cached": true
+      },
+      "ollama_version": "0.40.17",
+      "models": {
+        "qwen2.5-coder": {
+          "ollama_name": "qwen2.5-coder:7b",
+          "digest": "dae161e27b0e",
+          "size_gb": 4.68,
+          "quantization": "Q4_K_M",
+          "parameters": "7.6B"
+        },
+        "llama3.1": {
+          "ollama_name": "llama3.1:8b",
+          "digest": "46e0c10c039e",
+          "size_gb": 4.92,
+          "quantization": "Q4_K_M",
+          "parameters": "8.0B"
+        },
+        "codestral": {
+          "ollama_name": "codestral:22b-v0.1-q3_K_S",
+          "digest": "435a805994fa",
+          "size_gb": 9.64,
+          "quantization": "Q3_K_S",
+          "parameters": "22.2B"
+        },
+        "qwen2.5-1.5b": {
+          "ollama_name": "qwen2.5:1.5b",
+          "digest": "65ec06548149",
+          "size_gb": 0.99,
+          "quantization": "Q4_K_M",
+          "parameters": "1.5B"
+        },
+        "phi3-mini": {
+          "ollama_name": "phi3:mini",
+          "digest": "4f2222927938",
+          "size_gb": 2.18,
+          "quantization": "Q4_0",
+          "parameters": "3.8B"
+        }
+      },
+      "generation_options": {
+        "qwen2.5-coder": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "llama3.1": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.1,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "codestral": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        }
+      },
+      "fallback_order": [
+        "qwen2.5-coder",
+        "llama3.1",
+        "qwen2.5-1.5b",
+        "phi3-mini"
+      ],
+      "rag": {
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "chunk_size_chars": 6400,
+        "chunk_overlap_chars": 1200,
+        "top_k": 6,
+        "max_context_chars": 6000,
+        "max_chunk_chars": 2000
+      },
+      "sandbox": {
+        "mode": "auto",
+        "image": "securepatch-sandbox:latest",
+        "docker_ready": false,
+        "isolation": "process",
+        "limits": {
+          "network": "none",
+          "memory": "1g",
+          "cpus": "1",
+          "pids": 256
+        }
+      },
+      "pytest_timeout_seconds": 180
+    },
+    "runner": {
+      "python": "3.12.6",
+      "seeds": [
+        11,
+        22,
+        33
+      ],
+      "temperature": 0.2,
+      "ablation_model": "llama3.1",
+      "default_model": "qwen2.5-coder"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 5800HS with Radeon Graphics",
+      "ram_gb": 15.4,
+      "gpu": "AMD Radeon(TM) Graphics; NVIDIA GeForce RTX 3050 Laptop GPU",
+      "os": "Windows-11-10.0.26300-SP0"
+    }
+  },
+  {
+    "collected_at": "2026-11-24T22:56:52",
+    "backend": {
+      "python": "3.12.6",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+      "packages": {
+        "fastapi": "0.141.1",
+        "bandit": "1.9.4",
+        "chromadb": "1.5.9",
+        "sentence-transformers": "6.1.0",
+        "langchain-text-splitters": "1.1.3",
+        "langchain-core": "1.6.6",
+        "torch": "2.14.1",
+        "pytest": "9.1.1",
+        "requests": "2.34.2"
+      },
+      "semgrep": {
+        "available": true,
+        "binary": "C:\\Users\\muska\\Desktop\\SecurePatch\\.tools\\semgrep\\Scripts\\semgrep.exe",
+        "rules_cached": true
+      },
+      "ollama_version": "0.40.17",
+      "models": {
+        "qwen2.5-coder": {
+          "ollama_name": "qwen2.5-coder:7b",
+          "digest": "dae161e27b0e",
+          "size_gb": 4.68,
+          "quantization": "Q4_K_M",
+          "parameters": "7.6B"
+        },
+        "llama3.1": {
+          "ollama_name": "llama3.1:8b",
+          "digest": "46e0c10c039e",
+          "size_gb": 4.92,
+          "quantization": "Q4_K_M",
+          "parameters": "8.0B"
+        },
+        "codestral": {
+          "ollama_name": "codestral:22b-v0.1-q3_K_S",
+          "digest": "435a805994fa",
+          "size_gb": 9.64,
+          "quantization": "Q3_K_S",
+          "parameters": "22.2B"
+        },
+        "qwen2.5-1.5b": {
+          "ollama_name": "qwen2.5:1.5b",
+          "digest": "65ec06548149",
+          "size_gb": 0.99,
+          "quantization": "Q4_K_M",
+          "parameters": "1.5B"
+        },
+        "phi3-mini": {
+          "ollama_name": "phi3:mini",
+          "digest": "4f2222927938",
+          "size_gb": 2.18,
+          "quantization": "Q4_0",
+          "parameters": "3.8B"
+        }
+      },
+      "generation_options": {
+        "qwen2.5-coder": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "llama3.1": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.1,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "codestral": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        }
+      },
+      "fallback_order": [
+        "qwen2.5-coder",
+        "llama3.1",
+        "qwen2.5-1.5b",
+        "phi3-mini"
+      ],
+      "rag": {
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "chunk_size_chars": 6400,
+        "chunk_overlap_chars": 1200,
+        "top_k": 6,
+        "max_context_chars": 6000,
+        "max_chunk_chars": 2000
+      },
+      "sandbox": {
+        "mode": "auto",
+        "image": "securepatch-sandbox:latest",
+        "docker_ready": false,
+        "isolation": "process",
+        "limits": {
+          "network": "none",
+          "memory": "1g",
+          "cpus": "1",
+          "pids": 256
+        }
+      },
+      "pytest_timeout_seconds": 180
+    },
+    "runner": {
+      "python": "3.12.6",
+      "seeds": [
+        11,
+        22,
+        33
+      ],
+      "temperature": 0.2,
+      "ablation_model": "llama3.1",
+      "default_model": "qwen2.5-coder"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 5800HS with Radeon Graphics",
+      "ram_gb": 15.4,
+      "gpu": "AMD Radeon(TM) Graphics; NVIDIA GeForce RTX 3050 Laptop GPU",
+      "os": "Windows-11-10.0.26300-SP0"
+    }
+  },
+  {
+    "collected_at": "2026-11-25T00:14:34",
+    "backend": {
+      "python": "3.12.6",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+      "packages": {
+        "fastapi": "0.141.1",
+        "bandit": "1.9.4",
+        "chromadb": "1.5.9",
+        "sentence-transformers": "6.1.0",
+        "langchain-text-splitters": "1.1.3",
+        "langchain-core": "1.6.6",
+        "torch": "2.14.1",
+        "pytest": "9.1.1",
+        "requests": "2.34.2"
+      },
+      "semgrep": {
+        "available": true,
+        "binary": "C:\\Users\\muska\\Desktop\\SecurePatch\\.tools\\semgrep\\Scripts\\semgrep.exe",
+        "rules_cached": true
+      },
+      "ollama_version": "0.40.17",
+      "models": {
+        "qwen2.5-coder": {
+          "ollama_name": "qwen2.5-coder:7b",
+          "digest": "dae161e27b0e",
+          "size_gb": 4.68,
+          "quantization": "Q4_K_M",
+          "parameters": "7.6B"
+        },
+        "llama3.1": {
+          "ollama_name": "llama3.1:8b",
+          "digest": "46e0c10c039e",
+          "size_gb": 4.92,
+          "quantization": "Q4_K_M",
+          "parameters": "8.0B"
+        },
+        "codestral": {
+          "ollama_name": "codestral:22b-v0.1-q3_K_S",
+          "digest": "435a805994fa",
+          "size_gb": 9.64,
+          "quantization": "Q3_K_S",
+          "parameters": "22.2B"
+        },
+        "qwen2.5-1.5b": {
+          "ollama_name": "qwen2.5:1.5b",
+          "digest": "65ec06548149",
+          "size_gb": 0.99,
+          "quantization": "Q4_K_M",
+          "parameters": "1.5B"
+        },
+        "phi3-mini": {
+          "ollama_name": "phi3:mini",
+          "digest": "4f2222927938",
+          "size_gb": 2.18,
+          "quantization": "Q4_0",
+          "parameters": "3.8B"
+        }
+      },
+      "generation_options": {
+        "qwen2.5-coder": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "llama3.1": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.1,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "codestral": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        }
+      },
+      "fallback_order": [
+        "qwen2.5-coder",
+        "llama3.1",
+        "qwen2.5-1.5b",
+        "phi3-mini"
+      ],
+      "rag": {
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "chunk_size_chars": 6400,
+        "chunk_overlap_chars": 1200,
+        "top_k": 6,
+        "max_context_chars": 6000,
+        "max_chunk_chars": 2000
+      },
+      "sandbox": {
+        "mode": "auto",
+        "image": "securepatch-sandbox:latest",
+        "docker_ready": false,
+        "isolation": "process",
+        "limits": {
+          "network": "none",
+          "memory": "1g",
+          "cpus": "1",
+          "pids": 256
+        }
+      },
+      "pytest_timeout_seconds": 180
+    },
+    "runner": {
+      "python": "3.12.6",
+      "seeds": [
+        11,
+        22,
+        33
+      ],
+      "temperature": 0.2,
+      "ablation_model": "llama3.1",
+      "default_model": "qwen2.5-coder"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 5800HS with Radeon Graphics",
+      "ram_gb": 15.4,
+      "gpu": "AMD Radeon(TM) Graphics; NVIDIA GeForce RTX 3050 Laptop GPU",
+      "os": "Windows-11-10.0.26300-SP0"
+    }
+  },
+  {
+    "collected_at": "2026-11-25T02:25:46",
+    "backend": {
+      "python": "3.12.6",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+      "packages": {
+        "fastapi": "0.141.1",
+        "bandit": "1.9.4",
+        "chromadb": "1.5.9",
+        "sentence-transformers": "6.1.0",
+        "langchain-text-splitters": "1.1.3",
+        "langchain-core": "1.6.6",
+        "torch": "2.14.1",
+        "pytest": "9.1.1",
+        "requests": "2.34.2"
+      },
+      "semgrep": {
+        "available": true,
+        "binary": "C:\\Users\\muska\\Desktop\\SecurePatch\\.tools\\semgrep\\Scripts\\semgrep.exe",
+        "rules_cached": true
+      },
+      "ollama_version": "0.40.17",
+      "models": {
+        "qwen2.5-coder": {
+          "ollama_name": "qwen2.5-coder:7b",
+          "digest": "dae161e27b0e",
+          "size_gb": 4.68,
+          "quantization": "Q4_K_M",
+          "parameters": "7.6B"
+        },
+        "llama3.1": {
+          "ollama_name": "llama3.1:8b",
+          "digest": "46e0c10c039e",
+          "size_gb": 4.92,
+          "quantization": "Q4_K_M",
+          "parameters": "8.0B"
+        },
+        "codestral": {
+          "ollama_name": "codestral:22b-v0.1-q3_K_S",
+          "digest": "435a805994fa",
+          "size_gb": 9.64,
+          "quantization": "Q3_K_S",
+          "parameters": "22.2B"
+        },
+        "qwen2.5-1.5b": {
+          "ollama_name": "qwen2.5:1.5b",
+          "digest": "65ec06548149",
+          "size_gb": 0.99,
+          "quantization": "Q4_K_M",
+          "parameters": "1.5B"
+        },
+        "phi3-mini": {
+          "ollama_name": "phi3:mini",
+          "digest": "4f2222927938",
+          "size_gb": 2.18,
+          "quantization": "Q4_0",
+          "parameters": "3.8B"
+        }
+      },
+      "generation_options": {
+        "qwen2.5-coder": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "llama3.1": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.1,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "codestral": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        }
+      },
+      "fallback_order": [
+        "qwen2.5-coder",
+        "llama3.1",
+        "qwen2.5-1.5b",
+        "phi3-mini"
+      ],
+      "rag": {
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "chunk_size_chars": 6400,
+        "chunk_overlap_chars": 1200,
+        "top_k": 6,
+        "max_context_chars": 6000,
+        "max_chunk_chars": 2000
+      },
+      "sandbox": {
+        "mode": "auto",
+        "image": "securepatch-sandbox:latest",
+        "docker_ready": false,
+        "isolation": "process",
+        "limits": {
+          "network": "none",
+          "memory": "1g",
+          "cpus": "1",
+          "pids": 256
+        }
+      },
+      "pytest_timeout_seconds": 180
+    },
+    "runner": {
+      "python": "3.12.6",
+      "seeds": [
+        11,
+        22,
+        33
+      ],
+      "temperature": 0.2,
+      "ablation_model": "llama3.1",
+      "default_model": "qwen2.5-coder"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 5800HS with Radeon Graphics",
+      "ram_gb": 15.4,
+      "gpu": "AMD Radeon(TM) Graphics; NVIDIA GeForce RTX 3050 Laptop GPU",
+      "os": "Windows-11-10.0.26300-SP0"
+    }
+  },
+  {
+    "collected_at": "2026-11-25T02:28:43",
+    "backend": {
+      "python": "3.12.6",
+      "platform": "Windows-11-10.0.26300-SP0",
+      "processor": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+      "packages": {
+        "fastapi": "0.141.1",
+        "bandit": "1.9.4",
+        "chromadb": "1.5.9",
+        "sentence-transformers": "6.1.0",
+        "langchain-text-splitters": "1.1.3",
+        "langchain-core": "1.6.6",
+        "torch": "2.14.1",
+        "pytest": "9.1.1",
+        "requests": "2.34.2"
+      },
+      "semgrep": {
+        "available": true,
+        "binary": "C:\\Users\\muska\\Desktop\\SecurePatch\\.tools\\semgrep\\Scripts\\semgrep.exe",
+        "rules_cached": true
+      },
+      "ollama_version": "0.40.17",
+      "models": {
+        "qwen2.5-coder": {
+          "ollama_name": "qwen2.5-coder:7b",
+          "digest": "dae161e27b0e",
+          "size_gb": 4.68,
+          "quantization": "Q4_K_M",
+          "parameters": "7.6B"
+        },
+        "llama3.1": {
+          "ollama_name": "llama3.1:8b",
+          "digest": "46e0c10c039e",
+          "size_gb": 4.92,
+          "quantization": "Q4_K_M",
+          "parameters": "8.0B"
+        },
+        "codestral": {
+          "ollama_name": "codestral:22b-v0.1-q3_K_S",
+          "digest": "435a805994fa",
+          "size_gb": 9.64,
+          "quantization": "Q3_K_S",
+          "parameters": "22.2B"
+        },
+        "qwen2.5-1.5b": {
+          "ollama_name": "qwen2.5:1.5b",
+          "digest": "65ec06548149",
+          "size_gb": 0.99,
+          "quantization": "Q4_K_M",
+          "parameters": "1.5B"
+        },
+        "phi3-mini": {
+          "ollama_name": "phi3:mini",
+          "digest": "4f2222927938",
+          "size_gb": 2.18,
+          "quantization": "Q4_0",
+          "parameters": "3.8B"
+        }
+      },
+      "generation_options": {
+        "qwen2.5-coder": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "llama3.1": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.1,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        },
+        "codestral": {
+          "temperature": 0.0,
+          "num_predict": 600,
+          "top_p": 0.9,
+          "repeat_penalty": 1.15,
+          "repeat_last_n": 256,
+          "num_ctx": 8192
+        }
+      },
+      "fallback_order": [
+        "qwen2.5-coder",
+        "llama3.1",
+        "qwen2.5-1.5b",
+        "phi3-mini"
+      ],
+      "rag": {
+        "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+        "chunk_size_chars": 6400,
+        "chunk_overlap_chars": 1200,
+        "top_k": 6,
+        "max_context_chars": 6000,
+        "max_chunk_chars": 2000
+      },
+      "sandbox": {
+        "mode": "auto",
+        "image": "securepatch-sandbox:latest",
+        "docker_ready": false,
+        "isolation": "process",
+        "limits": {
+          "network": "none",
+          "memory": "1g",
+          "cpus": "1",
+          "pids": 256
+        }
+      },
+      "pytest_timeout_seconds": 180
+    },
+    "runner": {
+      "python": "3.12.6",
+      "seeds": [
+        11,
+        22,
+        33
+      ],
+      "temperature": 0.2,
+      "ablation_model": "llama3.1",
+      "default_model": "qwen2.5-coder"
+    },
+    "hardware": {
+      "cpu": "AMD Ryzen 7 5800HS with Radeon Graphics",
+      "ram_gb": 15.4,
+      "gpu": "AMD Radeon(TM) Graphics; NVIDIA GeForce RTX 3050 Laptop GPU",
+      "os": "Windows-11-10.0.26300-SP0"
+    }
+  }
+]

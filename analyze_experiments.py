@@ -271,6 +271,9 @@ def main():
                "- *without RAG*: retrieved repository context removed, everything else unchanged.",
                "- *Plain LLM*: RAG, source graph, callers, tests and imports all removed (finding + function only).",
                "- *full system*: Qwen first, automatic fallback to other models when generation fails.", ""]
+    abl2 = [e for e in ("llama_full_d2", "ablation_no_rag_d2", "plain_llm_d2") if e in summaries]
+    if len(abl2) >= 2:
+        md += ["## Ablation study (D2)", "", results_table("D2", abl2, summaries), ""]
     # Without the Bandit re-scan: accept whenever the patch is valid and tests pass.
     rows_rescan = []
     for e in [x for x in ("qwen_full", "llama_full", "fallback_full", "llama_full_d2") if x in by_exp]:
