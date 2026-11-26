@@ -63,7 +63,7 @@ ax.set_ylim(0, 108)
 from matplotlib.patches import Patch  # noqa: E402
 ax.legend(handles=[Patch(facecolor="white", edgecolor="black", label="D1 (synthetic)"),
                    Patch(facecolor="white", edgecolor="black", hatch="//", label="D2 (OWASP PyGoat)")],
-          loc="upper right", frameon=False, fontsize=8, ncol=2)
+          loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, fontsize=8, ncol=2)
 save(fig, "verified_main")
 
 # Fig: ablation of the context components -------------------------------------
@@ -83,7 +83,7 @@ ax.set_ylabel("Verified fixes (%)")
 ax.set_ylim(0, 108)
 ax.legend(handles=[Patch(facecolor=BLUE, edgecolor="black", label="D1 (synthetic)"),
                    Patch(facecolor=GREEN, edgecolor="black", label="D2 (OWASP PyGoat)")],
-          loc="upper right", frameon=False, fontsize=8, ncol=2)
+          loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, fontsize=8, ncol=2)
 save(fig, "ablation_context")
 
 # Fig: trend over the number of retrieved chunks k ------------------------------
